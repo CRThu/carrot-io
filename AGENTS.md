@@ -162,10 +162,15 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
 | `cio/backends/ftdi.py` | `FtdiUartTransport`, `FtdiI2cTransport`, `FtdiSpiTransport`, `FtdiGpioPin` | PyFTDI 硬件控制器适配器。 |
 | `cio/backends/visa.py` | `VisaTransport` | Phase 1 VISA 存根（连接时抛出 `CDllMissingError` 或 `PythonPackageMissingError`）。 |
 | `cio/backends/usb.py` | `UsbTransport` | Phase 1 USB 存根。 |
-| `cio/composite/spi.py` | `AsyncSpiBridge` | 依赖注入 SPI 协议桥。 |
-| `cio/composite/i2c.py` | `AsyncI2cBridge` | 依赖注入 I2C 协议桥。 |
+| `cio/core/frame.py` | `HardwareFrame`, `FrameCodec`, `calc_crc16_modbus` | 硬件控制帧 V1.0 数据结构体、CRC16-MODBUS 计算与寻帧编解码器。 |
+| `cio/composite/frame.py` | `AsyncFrameBridge` | 硬件控制帧传输桥 (封装 Frame 编解码并进行收发与状态码校验)。 |
+| `cio/composite/gpio.py` | `AsyncGpioBridge` | 硬件帧 GPIO 引脚控制协议桥。 |
+| `cio/composite/i2c.py` | `AsyncI2cBridge` | 硬件帧 I2C 主机总线协议桥。 |
+| `cio/composite/spi.py` | `AsyncSpiBridge` | 硬件帧 SPI 全双工总线协议桥。 |
 | `cio/composite/rpc.py` | `RpcRemoteTransport`, `RpcServer`, `start_rpc_server` | JSON-RPC 2.0 异步网络硬件代理管道客户端与服务端网关守护进程。 |
 | `cio/testing/mock.py` | `MockTransport`, `MockGpioPin` | 内存 Mock 测试双重对象（支持自动应答与发送历史查看）。 |
+
+
 
 ---
 

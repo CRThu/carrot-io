@@ -20,6 +20,26 @@ from cio.core.codec import (
     FramedBinaryCodec,
     StructCodec,
 )
+from cio.core.frame import (
+    ACTION_CFG,
+    ACTION_READ_DATA,
+    ACTION_READ_REG,
+    ACTION_WRITE_DATA,
+    ACTION_WRITE_REG,
+    FrameCodec,
+    HardwareFrame,
+    STATUS_BUSY,
+    STATUS_ERR,
+    STATUS_NACK,
+    STATUS_OK,
+)
+
+
+from cio.composite.frame import AsyncFrameBridge
+from cio.composite.gpio import AsyncGpioBridge
+from cio.composite.i2c import AsyncI2cBridge
+from cio.composite.spi import AsyncSpiBridge
+from cio.composite.rpc import RpcRemoteTransport, RpcServer, start_rpc_server
 from cio.core.exceptions import (
     TransportError,
     DriverMissingError,
@@ -97,8 +117,6 @@ def ftdi(
     return FtdiUartTransport(url=url, baud=baud, timeout=timeout, **kwargs)
 
 
-from cio.composite.rpc import RpcRemoteTransport, RpcServer, start_rpc_server
-
 __version__ = "0.1.0"
 
 __all__ = [
@@ -121,14 +139,31 @@ __all__ = [
     "ProtocolTransport",
     "SyncTransportWrapper",
     # Composite Bridges & RPC Proxy
+    "AsyncFrameBridge",
+    "AsyncGpioBridge",
+    "AsyncI2cBridge",
+    "AsyncSpiBridge",
     "RpcRemoteTransport",
     "RpcServer",
-    # Codecs
+    # Codecs & Frame Protocol
     "BaseCodec",
     "LineCodec",
     "FixedLengthCodec",
     "FramedBinaryCodec",
     "StructCodec",
+    "HardwareFrame",
+    "FrameCodec",
+    "STATUS_OK",
+    "STATUS_NACK",
+    "STATUS_BUSY",
+    "STATUS_ERR",
+    "ACTION_CFG",
+    "ACTION_READ_DATA",
+    "ACTION_WRITE_DATA",
+    "ACTION_READ_REG",
+    "ACTION_WRITE_REG",
+
+
     # Exceptions
     "TransportError",
     "DriverMissingError",

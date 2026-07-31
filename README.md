@@ -157,9 +157,92 @@ async def main():
 asyncio.run(main())
 ```
 
+### 7. 硬件控制包协议桥 (`gpio+`, `i2c+`, `spi+`, `frame+`)
+
+```python
+import asyncio
+import cio
+
+async def main():
+    # 通过标准硬件帧协议桥控制 GPIO 引脚与 I2C / SPI 外设 (带 CRC16 校验)
+    async with cio.connect("gpio+serial://COM6?baud=115200") as gpio:
+        await gpio.set_high()
+        level = await gpio.read_level()
+        print("GPIO Level:", level)
+
+    async with cio.connect("i2c+serial://COM6?baud=115200") as i2c:
+        chip_id = await i2c.read_reg(addr=0x68, reg=0x75, nbytes=1)
+        print("I2C Chip ID:", chip_id.hex())
+
+asyncio.run(main())
+```
+
+
 ---
 
-## 详细 API 手册 (API Reference)
+## 硬件控制包帧结构规范 (Hardware Frame Specification V1.0)
+
+`cio` 提供了标准的 9 字节固定包头二进制控制帧格式，结合 CRC16-MODBUS 校验与定界符，用于跨任何传输管道（串口/以太网/RPC）可靠操控底层外设。
+
+### 1. 固定包头帧结构字节排布表
+
+| 字节 Offset | 字段 (Field) | 长度 (Size) | 默认/示例值 | 字段含义与作用说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `0` | **HEADER** | 1 Byte | `0x3C` (`'<'`) | 帧起始定界符，用于流式寻帧定位 |
+| `1` | **PROTOCOL** | 1 Byte | `0x10` | 统一硬件控制协议版本 V1.0 |
+| `2` | **PERIPHERAL**| 1 Byte | `0x01` / `0x02` / `0x03` | 外设种类 (`0x01`: GPIO, `0x02`: I2C, `0x03`: SPI) |
+| `3` | **ACTION** | 1 Byte | `0x00` ~ `0x05` | 操作动作 (`0x00`: CFG, `0x01`: READ_DATA, `0x02`: WRITE_DATA, `0x03`: TRANSFER全双工, `0x04`: READ_REG, `0x05`: WRITE_REG) |
+
+| `4` | **BUS** | 1 Byte | `0x00` ~ `0xFF` | 引脚/片选/总线 ID (如 GPIO Pin ID, SPI CS Pin ID) |
+| `5` | **ADDR** | 1 Byte | `0x68` / `0x00` | 板级从机设备地址 (I2C 7-bit 地址，非 I2C 填 `0x00`) |
+| `6` | **STATUS** | 1 Byte | `0x00` | 状态码 (发送固定 `0x00`；响应 `0x00`: OK, `0x01`: NACK, `0x02`: BUSY, `0xFF`: ERR) |
+| `7 .. 8` | **PAYLOAD_LEN**| 2 Bytes | `0x0006` | Payload 数据载荷字节数 $N$ (大端序 `uint16_be`) |
+| `9 .. 9+N-1`| **PAYLOAD** | $N$ Bytes | 变长数据 | 传输的具体数据载荷 |
+| `9+N .. 10+N`| **CRC16** | 2 Bytes | 小端序 `uint16_le` | 从 `PROTOCOL` (Offset 1) 到 `PAYLOAD` 结尾计算 **CRC16-MODBUS** |
+| `11+N` | **TAIL** | 1 Byte | `0x3E` (`'>'`) | 帧结束定界符 |
+
+---
+
+### 2. 各外设 Payload 详细布局表
+
+> [!NOTE]
+> **Regfile / 寄存器地址规范**：在 Payload 中，寄存器地址 `REG_ADDR` **统一固定为 4 字节大端序 (`uint32_be`)**，可原生兼容 8-bit、16-bit 和 32-bit 寄存器。
+
+#### A. I2C 外设 Payload 表 (`PERIPHERAL = 0x02`)
+
+| 操作动作 (ACTION) | Payload 格式 | Payload 字节排布 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x01, SPEED_BE(4B)]` | 1 字节 Item ID + 4 字节大端波特率 (如 `400000` = 400kHz) |
+| **READ_DATA (`0x01`)** | `[READ_LEN(2B)]` | `[READ_LEN_BE(2B)]` | 请求指定读取长度，响应返回原始接收字节 |
+| **WRITE_DATA (`0x02`)**| `[DATA_BYTES]` | `[DATA_BYTES(NB)]` | 写入从机设备的原始字节流 |
+| **READ_REG (`0x04`)** | `[REGFILE(4B), REG_ADDR(4B), READ_LEN(2B)]` | `[REGFILE_BE(4B), REG_ADDR_BE(4B), READ_LEN_BE(2B)]` | **4 字节 Regfile 块编号 (默认 0)** + **4 字节寄存器地址** + 2 字节读取长度 |
+| **WRITE_REG (`0x05`)** | `[REGFILE(4B), REG_ADDR(4B), DATA_BYTES]` | `[REGFILE_BE(4B), REG_ADDR_BE(4B), DATA_BYTES(NB)]` | **4 字节 Regfile 块编号 (默认 0)** + **4 字节寄存器地址** + 写入的数据字节 |
+
+
+
+
+#### B. SPI 外设 Payload 表 (`PERIPHERAL = 0x03`)
+
+| 操作动作 (ACTION) | Payload 格式 | Payload 字节排布 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x01, MODE_BE(4B)]` | 4 字节模式 (`0`~`3`) |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x02, BIT_ORDER_BE(4B)]` | 4 字节位序 (`0`: MSB First, `1`: LSB First) |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x03, SPEED_BE(4B)]` | 4 字节波特率 (如 `10000000` = 10MHz) |
+| **TRANSFER (`0x03`)** | `[MOSI_DATA]` | `[MOSI_DATA(NB)]` | **全双工收发**，请求 MOSI 数据，响应返回等长 MISO 数据 |
+
+#### C. GPIO 外设 Payload 表 (`PERIPHERAL = 0x01`)
+
+| 操作动作 (ACTION) | Payload 格式 | Payload 字节排布 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x01, MODE_BE(4B)]` | 4 字节模式 (`0`: Input, `1`: Output Push-Pull, `2`: Output Open-Drain) |
+| **CFG (`0x00`)** | `[ITEM_ID(1B), VALUE(4B)]` | `[0x02, PULL_BE(4B)]` | 4 字节上下拉 (`0`: None, `1`: Pull-Up, `2`: Pull-Down) |
+| **READ_DATA (`0x01`)** | 空 | `[]` | 响应返回 `[0x01]` (HIGH) 或 `[0x00]` (LOW) |
+| **WRITE_DATA (`0x02`)**| `[LEVEL(1B)]` | `[LEVEL(1B)]` | `0x01` 拉高，`0x00` 拉低 |
+
+
+---
+
+
 
 ### 1. 顶层快捷 API (Top-Level Functions)
 

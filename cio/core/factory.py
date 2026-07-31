@@ -38,7 +38,7 @@ def parse_url(url: str) -> tuple[str, str, dict[str, Any]]:
 def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     """
     Universal transport factory from URL specification.
-    Supports composite schemes like `spi+tcp://192.168.1.100:5025`.
+    Supports composite schemes like `spi+tcp://192.168.1.100:5025` and `gpio+serial://COM3`.
     """
     scheme, address, url_params = parse_url(url)
     merged_kwargs = {**url_params, **kwargs}
@@ -46,19 +46,28 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     if "+" in scheme:
         parts = scheme.split("+", 1)
         high_scheme, base_scheme = parts[0], parts[1]
+        sub_url = f"{base_scheme}://{address}"
 
-        if high_scheme == "spi":
-            sub_url = f"{base_scheme}://{address}"
+        if high_scheme == "gpio":
             base_transport = connect(sub_url, **merged_kwargs)
-            from cio.composite.spi import AsyncSpiBridge
+            from cio.composite.gpio import AsyncGpioBridge
 
-            return AsyncSpiBridge(base_transport, **merged_kwargs)
+            return AsyncGpioBridge(base_transport, **merged_kwargs)
         elif high_scheme == "i2c":
-            sub_url = f"{base_scheme}://{address}"
             base_transport = connect(sub_url, **merged_kwargs)
             from cio.composite.i2c import AsyncI2cBridge
 
             return AsyncI2cBridge(base_transport, **merged_kwargs)
+        elif high_scheme == "spi":
+            base_transport = connect(sub_url, **merged_kwargs)
+            from cio.composite.spi import AsyncSpiBridge
+
+            return AsyncSpiBridge(base_transport, **merged_kwargs)
+        elif high_scheme == "frame":
+            base_transport = connect(sub_url, **merged_kwargs)
+            from cio.composite.frame import AsyncFrameBridge
+
+            return AsyncFrameBridge(base_transport, **merged_kwargs)
         elif high_scheme == "rpc":
             from cio.composite.rpc import RpcRemoteTransport
 

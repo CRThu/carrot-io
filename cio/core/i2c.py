@@ -27,11 +27,11 @@ class AsyncI2cTransport(AsyncBaseTransport):
         addr: int,
         reg: int,
         nbytes: int = 1,
-        reg_size: int = 1,
+        regfile: int = 0,
         timeout: float | None = None,
     ) -> bytes:
-        """Read nbytes from specified device address and register."""
-        reg_bytes = reg.to_bytes(reg_size, byteorder="big")
+        """Read nbytes from specified device address, regfile, and register."""
+        reg_bytes = reg.to_bytes(4, byteorder="big")
         await self.write_to(addr, reg_bytes, timeout=timeout)
         return await self.read_from(addr, nbytes, timeout=timeout)
 
@@ -40,9 +40,10 @@ class AsyncI2cTransport(AsyncBaseTransport):
         addr: int,
         reg: int,
         data: bytes,
-        reg_size: int = 1,
+        regfile: int = 0,
         timeout: float | None = None,
     ) -> int:
-        """Write data to specified device address and register."""
-        reg_bytes = reg.to_bytes(reg_size, byteorder="big")
+        """Write data to specified device address, regfile, and register."""
+        reg_bytes = reg.to_bytes(4, byteorder="big")
         return await self.write_to(addr, reg_bytes + data, timeout=timeout)
+
