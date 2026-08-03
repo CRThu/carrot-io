@@ -1,64 +1,42 @@
 """
-GPIO Protocol Bridge (AsyncGpioBridge) using Hardware Frame Protocol.
+GPIO Protocol Bridge (AsyncGpioBridge) using CarrotBridge ASCII Protocol.
 """
 from __future__ import annotations
 
 import asyncio
 from typing import Any, Literal
 
-from cio.composite.frame import AsyncFrameBridge
+from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
-from cio.core.frame import (
-    ACTION_CFG,
-    ACTION_READ_DATA,
-    ACTION_WRITE_DATA,
-    CFG_GPIO_MODE,
-    CFG_GPIO_PULL,
-    PERIPHERAL_GPIO,
-    HardwareFrame,
-)
-
 from cio.core.gpio import AsyncGpioPin
 
 
 class AsyncGpioBridge(AsyncGpioPin):
     """
-    GPIO Pin Bridge implementing Hardware Frame Protocol over any transport.
+    GPIO Pin Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """
 
     def __init__(
         self,
-        transport: AsyncBaseTransport | AsyncFrameBridge,
-        pin: int = 0,
+        transport: AsyncBaseTransport | CarrotBridge,
+        pin: int | str = 0,
         **kwargs: Any,
     ) -> None:
-        if isinstance(transport, AsyncFrameBridge):
+        if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
-            self._bridge = AsyncFrameBridge(transport, **kwargs)
+            self._bridge = CarrotBridge(transport, **kwargs)
         self.pin = pin
 
     @property
-    def bridge(self) -> AsyncFrameBridge:
+    def bridge(self) -> CarrotBridge:
         return self._bridge
 
     async def set_high(self) -> None:
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_GPIO,
-            action=ACTION_WRITE_DATA,
-            bus=self.pin,
-            payload=b"\x01",
-        )
-        await self._bridge.request_frame(frame)
+        await self._bridge.call("IO.W", self.pin, 1)
 
     async def set_low(self) -> None:
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_GPIO,
-            action=ACTION_WRITE_DATA,
-            bus=self.pin,
-            payload=b"\x00",
-        )
-        await self._bridge.request_frame(frame)
+        await self._bridge.call("IO.W", self.pin, 0)
 
     async def toggle(self) -> None:
         level = await self.read_level()
@@ -68,39 +46,28 @@ class AsyncGpioBridge(AsyncGpioPin):
             await self.set_high()
 
     async def read_level(self) -> bool:
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_GPIO,
-            action=ACTION_READ_DATA,
-            bus=self.pin,
-            payload=b"",
-        )
-        resp = await self._bridge.request_frame(frame)
-        return bool(resp.payload[0]) if resp.payload else False
+        res = await self._bridge.call("IO.R", self.pin)
+        return bool(res)
 
+    async def config_mode(self, mode: str | int) -> None:
+        """
+        Configure GPIO Mode: "IN", "OUT", "OUT,PP", "OUT,OD".
+        """
+        mode_str = mode
+        if isinstance(mode, int):
+            mapping = {0: "IN", 1: "OUT,PP", 2: "OUT,OD"}
+            mode_str = mapping.get(mode, "OUT,PP")
+        await self._bridge.call("IO.MODE", self.pin, mode_str)
 
-    async def config_mode(self, mode: int) -> None:
+    async def config_pull(self, pull: str | int) -> None:
         """
-        Configure GPIO Mode: 0 (Input), 1 (Output Push-Pull), 2 (Output Open-Drain).
+        Configure GPIO Pull: "NONE", "UP", "DOWN" or 0, 1, 2.
         """
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_GPIO,
-            action=ACTION_CFG,
-            bus=self.pin,
-            payload=bytes([CFG_GPIO_MODE, mode & 0xFF]),
-        )
-        await self._bridge.request_frame(frame)
-
-    async def config_pull(self, pull: int) -> None:
-        """
-        Configure GPIO Pull: 0 (None), 1 (Pull-Up), 2 (Pull-Down).
-        """
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_GPIO,
-            action=ACTION_CFG,
-            bus=self.pin,
-            payload=bytes([CFG_GPIO_PULL, pull & 0xFF]),
-        )
-        await self._bridge.request_frame(frame)
+        pull_str = pull
+        if isinstance(pull, int):
+            mapping = {0: "NONE", 1: "UP", 2: "DOWN"}
+            pull_str = mapping.get(pull, "NONE")
+        await self._bridge.call("IO.PULL", self.pin, pull_str)
 
     async def wait_for_edge(
         self,

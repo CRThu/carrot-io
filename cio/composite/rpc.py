@@ -1,5 +1,6 @@
 """
 RPC Remote Hardware Transport Proxy and Gateway (RpcRemoteTransport and RpcServer).
+Used for cross-machine network transparent hardware transport proxying over JSON-RPC 2.0.
 """
 from __future__ import annotations
 

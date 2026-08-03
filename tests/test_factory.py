@@ -3,6 +3,7 @@ Unit tests for URL factory & top-level connect API.
 """
 import pytest
 import cio
+from cio.composite.rpc import RpcRemoteTransport
 from cio.composite.spi import AsyncSpiBridge
 from cio.core.exceptions import InvalidUrlError
 
@@ -42,6 +43,14 @@ def test_factory_composite_i2c_tcp():
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
     assert dev.transport.timeout == 1.5
+
+
+def test_factory_composite_rpc_proxy():
+    dev = cio.connect("rpc+tcp://192.168.1.100:8000/5025")
+    assert isinstance(dev, RpcRemoteTransport)
+    assert dev.host == "192.168.1.100"
+    assert dev.port == 8000
+    assert dev.target_url == "tcp://5025"
 
 
 def test_factory_invalid_url():

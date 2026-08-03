@@ -1,33 +1,24 @@
 """
-SPI Protocol Bridge (AsyncSpiBridge) using Hardware Frame Protocol.
+SPI Protocol Bridge (AsyncSpiBridge) using CarrotBridge ASCII Protocol.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from cio.composite.frame import AsyncFrameBridge
+from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
-from cio.core.frame import (
-    ACTION_CFG,
-    ACTION_TRANSFER,
-    CFG_SPI_BIT_ORDER,
-    CFG_SPI_MODE,
-    CFG_SPI_SPEED,
-    PERIPHERAL_SPI,
-    HardwareFrame,
-)
 from cio.core.gpio import AsyncGpioPin
 from cio.core.spi import AsyncSpiTransport
 
 
 class AsyncSpiBridge(AsyncSpiTransport):
     """
-    SPI Bus Master Bridge implementing Hardware Frame Protocol over any transport.
+    SPI Bus Master Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """
 
     def __init__(
         self,
-        transport: AsyncBaseTransport | AsyncFrameBridge,
+        transport: AsyncBaseTransport | CarrotBridge,
         cs_pin: AsyncGpioPin | None = None,
         bus: int = 0,
         cs: int = 0,
@@ -35,16 +26,16 @@ class AsyncSpiBridge(AsyncSpiTransport):
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout)
-        if isinstance(transport, AsyncFrameBridge):
+        if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
-            self._bridge = AsyncFrameBridge(transport, timeout=timeout, **kwargs)
+            self._bridge = CarrotBridge(transport, timeout=timeout, **kwargs)
         self.bus = bus
         self.cs = cs
         self.cs_pin = cs_pin
 
     @property
-    def bridge(self) -> AsyncFrameBridge:
+    def bridge(self) -> CarrotBridge:
         return self._bridge
 
     @property
@@ -60,10 +51,40 @@ class AsyncSpiBridge(AsyncSpiTransport):
         await self._bridge.close()
 
     async def _write_impl(self, data: bytes) -> int:
-        return await self._bridge._write_impl(data)
+        return await self._bridge.write(data)
 
     async def _read_impl(self, nbytes: int) -> bytes:
-        return await self._bridge._read_impl(nbytes)
+        return await self._bridge.read(nbytes)
+
+    async def write(self, data: bytes, timeout: float | None = None) -> int:
+        if not self.is_open:
+            await self.open()
+
+        if self.cs_pin:
+            await self.cs_pin.set_low()
+
+        try:
+            cs_val = self.cs if self.cs is not None else self.bus
+            await self._bridge.call("SPI.W", cs_val, data, len(data), timeout=timeout)
+            return len(data)
+        finally:
+            if self.cs_pin:
+                await self.cs_pin.set_high()
+
+    async def read(self, nbytes: int, timeout: float | None = None) -> bytes:
+        if not self.is_open:
+            await self.open()
+
+        if self.cs_pin:
+            await self.cs_pin.set_low()
+
+        try:
+            cs_val = self.cs if self.cs is not None else self.bus
+            res = await self._bridge.call("SPI.R", cs_val, nbytes, timeout=timeout)
+            return CarrotBridge.to_bytes(res, nbytes)
+        finally:
+            if self.cs_pin:
+                await self.cs_pin.set_high()
 
     async def transfer(self, tx_data: bytes, timeout: float | None = None) -> bytes:
         if not self.is_open:
@@ -73,53 +94,18 @@ class AsyncSpiBridge(AsyncSpiTransport):
             await self.cs_pin.set_low()
 
         try:
-            frame = HardwareFrame(
-                peripheral=PERIPHERAL_SPI,
-                action=ACTION_TRANSFER,
-                bus=self.cs if self.cs is not None else self.bus,
-                payload=tx_data,
-            )
-            resp = await self._bridge.request_frame(frame, timeout=timeout)
-            return resp.payload
+            cs_val = self.cs if self.cs is not None else self.bus
+            res = await self._bridge.call("SPI.T", cs_val, tx_data, len(tx_data), timeout=timeout)
+            return CarrotBridge.to_bytes(res, len(tx_data))
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()
 
-    async def config_mode(self, mode: int) -> None:
+    async def config_mode(self, cpol: int, cpha: int) -> None:
         """
-        Configure SPI Mode (0..3).
+        Configure SPI Mode using CPOL (0/1) and CPHA (0/1).
         """
-        payload = bytes([CFG_SPI_MODE, mode & 0xFF])
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_SPI,
-            action=ACTION_CFG,
-            bus=self.bus,
-            payload=payload,
-        )
-        await self._bridge.request_frame(frame)
-
-    async def config_bit_order(self, order: int) -> None:
-        """
-        Configure SPI Bit Order: 0 (MSB First), 1 (LSB First).
-        """
-        payload = bytes([CFG_SPI_BIT_ORDER, order & 0xFF])
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_SPI,
-            action=ACTION_CFG,
-            bus=self.bus,
-            payload=payload,
-        )
-        await self._bridge.request_frame(frame)
+        await self._bridge.call("SPI.MODE", cpol, cpha)
 
     async def config_speed(self, speed_hz: int) -> None:
-        """
-        Configure SPI Speed in Hz.
-        """
-        payload = bytes([CFG_SPI_SPEED]) + speed_hz.to_bytes(4, byteorder="big")
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_SPI,
-            action=ACTION_CFG,
-            bus=self.bus,
-            payload=payload,
-        )
-        await self._bridge.request_frame(frame)
+        await self._bridge.call("SPI.SPEED", speed_hz)

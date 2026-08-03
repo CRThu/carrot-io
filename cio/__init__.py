@@ -20,22 +20,7 @@ from cio.core.codec import (
     FramedBinaryCodec,
     StructCodec,
 )
-from cio.core.frame import (
-    ACTION_CFG,
-    ACTION_READ_DATA,
-    ACTION_READ_REG,
-    ACTION_WRITE_DATA,
-    ACTION_WRITE_REG,
-    FrameCodec,
-    HardwareFrame,
-    STATUS_BUSY,
-    STATUS_ERR,
-    STATUS_NACK,
-    STATUS_OK,
-)
 
-
-from cio.composite.frame import AsyncFrameBridge
 from cio.composite.gpio import AsyncGpioBridge
 from cio.composite.i2c import AsyncI2cBridge
 from cio.composite.spi import AsyncSpiBridge
@@ -139,31 +124,17 @@ __all__ = [
     "ProtocolTransport",
     "SyncTransportWrapper",
     # Composite Bridges & RPC Proxy
-    "AsyncFrameBridge",
     "AsyncGpioBridge",
     "AsyncI2cBridge",
     "AsyncSpiBridge",
     "RpcRemoteTransport",
     "RpcServer",
-    # Codecs & Frame Protocol
+    # Codecs
     "BaseCodec",
     "LineCodec",
     "FixedLengthCodec",
     "FramedBinaryCodec",
     "StructCodec",
-    "HardwareFrame",
-    "FrameCodec",
-    "STATUS_OK",
-    "STATUS_NACK",
-    "STATUS_BUSY",
-    "STATUS_ERR",
-    "ACTION_CFG",
-    "ACTION_READ_DATA",
-    "ACTION_WRITE_DATA",
-    "ACTION_READ_REG",
-    "ACTION_WRITE_REG",
-
-
     # Exceptions
     "TransportError",
     "DriverMissingError",

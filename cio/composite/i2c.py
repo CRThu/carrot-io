@@ -1,47 +1,36 @@
 """
-I2C Protocol Bridge (AsyncI2cBridge) using Hardware Frame Protocol.
+I2C Protocol Bridge (AsyncI2cBridge) using CarrotBridge ASCII Protocol.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from cio.composite.frame import AsyncFrameBridge
+from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
-from cio.core.frame import (
-    ACTION_CFG,
-    ACTION_READ_DATA,
-    ACTION_READ_REG,
-    ACTION_WRITE_DATA,
-    ACTION_WRITE_REG,
-    CFG_I2C_SPEED,
-    PERIPHERAL_I2C,
-    HardwareFrame,
-)
-
 from cio.core.i2c import AsyncI2cTransport
 
 
 class AsyncI2cBridge(AsyncI2cTransport):
     """
-    I2C Bus Master Bridge implementing Hardware Frame Protocol over any transport.
+    I2C Bus Master Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """
 
     def __init__(
         self,
-        transport: AsyncBaseTransport | AsyncFrameBridge,
+        transport: AsyncBaseTransport | CarrotBridge,
         bus: int = 0,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout)
-        if isinstance(transport, AsyncFrameBridge):
+        if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
-            self._bridge = AsyncFrameBridge(transport, timeout=timeout, **kwargs)
+            self._bridge = CarrotBridge(transport, timeout=timeout, **kwargs)
         self.bus = bus
 
     @property
-    def bridge(self) -> AsyncFrameBridge:
+    def bridge(self) -> CarrotBridge:
         return self._bridge
 
     @property
@@ -57,102 +46,54 @@ class AsyncI2cBridge(AsyncI2cTransport):
         await self._bridge.close()
 
     async def _write_impl(self, data: bytes) -> int:
-        return await self._bridge._write_impl(data)
+        return await self._bridge.write(data)
 
     async def _read_impl(self, nbytes: int) -> bytes:
-        return await self._bridge._read_impl(nbytes)
+        return await self._bridge.read(nbytes)
 
-    async def read_from(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
+    async def read_from(self, addr: int | str, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-        req_payload = nbytes.to_bytes(2, byteorder="big")
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_I2C,
-            action=ACTION_READ_DATA,
-            bus=self.bus,
-            addr=addr,
-            payload=req_payload,
-        )
-        resp = await self._bridge.request_frame(frame, timeout=timeout)
-        return resp.payload
+        addr_str = f"0x{addr:X}" if isinstance(addr, int) else str(addr)
+        res = await self._bridge.call("IIC.R", addr_str, nbytes, timeout=timeout)
+        return CarrotBridge.to_bytes(res, nbytes)
 
-    async def write_to(self, addr: int, data: bytes, timeout: float | None = None) -> int:
+    async def write_to(self, addr: int | str, data: bytes, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_I2C,
-            action=ACTION_WRITE_DATA,
-            bus=self.bus,
-            addr=addr,
-            payload=data,
-        )
-        resp = await self._bridge.request_frame(frame, timeout=timeout)
+        addr_str = f"0x{addr:X}" if isinstance(addr, int) else str(addr)
+        await self._bridge.call("IIC.W", addr_str, data, len(data), timeout=timeout)
         return len(data)
 
     async def read_reg(
         self,
-        addr: int,
+        addr: int | str,
         reg: int,
         nbytes: int = 1,
         regfile: int = 0,
         timeout: float | None = None,
     ) -> bytes:
-        """
-        Read register using Hardware Frame Protocol.
-        Payload: [REGFILE (4 Bytes uint32_be), REG_ADDR (4 Bytes uint32_be), READ_LEN (2 Bytes uint16_be)]
-        """
         if not self.is_open:
             await self.open()
-        regfile_bytes = regfile.to_bytes(4, byteorder="big")
-        reg_bytes = reg.to_bytes(4, byteorder="big")
-        req_payload = regfile_bytes + reg_bytes + nbytes.to_bytes(2, byteorder="big")
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_I2C,
-            action=ACTION_READ_REG,
-            bus=self.bus,
-            addr=addr,
-            payload=req_payload,
-        )
-        resp = await self._bridge.request_frame(frame, timeout=timeout)
-        return resp.payload
+        reg_len = (reg.bit_length() + 7) // 8 or 1
+        reg_bytes = reg.to_bytes(reg_len, byteorder="big")
+        await self.write_to(addr, reg_bytes, timeout=timeout)
+        return await self.read_from(addr, nbytes, timeout=timeout)
 
     async def write_reg(
         self,
-        addr: int,
+        addr: int | str,
         reg: int,
         data: bytes,
         regfile: int = 0,
         timeout: float | None = None,
     ) -> int:
-        """
-        Write register using Hardware Frame Protocol.
-        Payload: [REGFILE (4 Bytes uint32_be), REG_ADDR (4 Bytes uint32_be), DATA (N Bytes)]
-        """
         if not self.is_open:
             await self.open()
-        regfile_bytes = regfile.to_bytes(4, byteorder="big")
-        reg_bytes = reg.to_bytes(4, byteorder="big")
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_I2C,
-            action=ACTION_WRITE_REG,
-            bus=self.bus,
-            addr=addr,
-            payload=regfile_bytes + reg_bytes + data,
-        )
-        resp = await self._bridge.request_frame(frame, timeout=timeout)
+        reg_len = (reg.bit_length() + 7) // 8 or 1
+        reg_bytes = reg.to_bytes(reg_len, byteorder="big")
+        await self.write_to(addr, reg_bytes + data, timeout=timeout)
         return len(data)
 
-
     async def config_speed(self, speed_hz: int) -> None:
-        """
-        Configure I2C Bus Speed in Hz.
-        Payload: [CFG_ITEM_ID (1 Byte), SPEED (4 Bytes uint32_be)]
-        """
-        payload = bytes([CFG_I2C_SPEED]) + speed_hz.to_bytes(4, byteorder="big")
-        frame = HardwareFrame(
-            peripheral=PERIPHERAL_I2C,
-            action=ACTION_CFG,
-            bus=self.bus,
-            payload=payload,
-        )
-        await self._bridge.request_frame(frame)
+        await self._bridge.call("IIC.SPEED", speed_hz)
