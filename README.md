@@ -3,6 +3,7 @@
 > 极简、零强依赖、优雅静默降级的高性能 Python 3.12+ 硬件驱动抽象层。
 
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![PyPI Version](https://img.shields.io/pypi/v/carrot-io.svg)](https://pypi.org/project/carrot-io/)
 [![Dependencies](https://img.shields.io/badge/dependencies-0%20hard-brightgreen.svg)](#核心特性)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -43,14 +44,28 @@
 
 ## 安装说明
 
+### 使用 pip
+
 ```bash
-# 1. 安装核心库 (零第三方依赖)
+# 安装核心库 (零第三方依赖)
 pip install carrot-io
 
-# 2. 安装可选扩展
+# 安装可选扩展
 pip install "carrot-io[serial]"   # PySerial 串口支持
 pip install "carrot-io[ftdi]"     # PyFTDI 芯片支持
-pip install "carrot-io[all]"      # 全量依赖安装 (含开发与测试工具)
+pip install "carrot-io[all]"      # 全量依赖安装
+```
+
+### 使用 uv
+
+```bash
+# 安装核心库
+uv add carrot-io
+
+# 安装可选扩展
+uv add "carrot-io[serial]"
+uv add "carrot-io[ftdi]"
+uv add "carrot-io[all]"
 ```
 
 ---
