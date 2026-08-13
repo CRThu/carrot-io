@@ -49,6 +49,13 @@ class CarrotBridge(AsyncBaseTransport):
         if self._underlying.is_open:
             await self._underlying.close()
 
+    async def _write_impl(self, data: bytes) -> int:
+        return await self._underlying.write(data)
+
+    async def _read_impl(self, nbytes: int) -> bytes:
+        return await self._underlying.read(nbytes)
+
+
     def _start_recv_loop(self) -> None:
         if self._recv_task is None or self._recv_task.done():
             self._recv_task = asyncio.create_task(self._receive_loop())

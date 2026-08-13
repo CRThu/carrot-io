@@ -38,11 +38,12 @@ def test_factory_composite_spi_tcp_query():
 def test_factory_composite_i2c_tcp():
     from cio.composite.i2c import AsyncI2cBridge
 
-    dev = cio.connect("i2c+tcp://192.168.1.100:5025?timeout=1.5")
+    dev = cio.connect("i2c+tcp://192.168.1.100:5025?timeout=1.5&reg_len=2")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
     assert dev.transport.timeout == 1.5
+    assert dev.default_reg_len == 2
 
 
 def test_factory_composite_rpc_proxy():

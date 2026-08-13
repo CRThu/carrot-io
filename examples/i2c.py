@@ -20,7 +20,7 @@ async def main():
             print(f"读取到的芯片 ID: {chip_id.hex()}")
 
             # 3. 从从机地址直接读取 6 字节数据
-            data = await dev.read_from(i2c_addr, nbytes=6)
+            data = await dev.read(i2c_addr, nbytes=6)
             print(f"读取到的原始数据 ({len(data)} 字节): {data.hex()}")
     except cio.TransportError as e:
         print("[I2C 提示] 通信或设备未响应:", e)

@@ -39,6 +39,10 @@ class AsyncSpiBridge(AsyncSpiTransport):
         return self._bridge
 
     @property
+    def transport(self) -> AsyncBaseTransport:
+        return self._bridge._underlying
+
+    @property
     def is_open(self) -> bool:
         return self._bridge.is_open
 

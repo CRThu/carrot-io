@@ -44,7 +44,7 @@ async def test_i2c_bridge():
         pipe.push_rx(b"[RETURN]: 1\n")
 
     t1 = asyncio.create_task(device_resp_w())
-    written = await i2c.write_to(0x68, b"\x00")
+    written = await i2c.write(0x68, b"\x00")
     await t1
     assert written == 1
 
@@ -54,7 +54,7 @@ async def test_i2c_bridge():
         pipe.push_rx(b"[RETURN]: 0x55\n")
 
     t2 = asyncio.create_task(device_resp_r())
-    val = await i2c.read_from(0x68, 1)
+    val = await i2c.read(0x68, 1)
     await t2
     assert val == b"\x55"
 

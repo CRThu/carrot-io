@@ -19,10 +19,11 @@ class AsyncI2cBridge(AsyncI2cTransport):
         self,
         transport: AsyncBaseTransport | CarrotBridge,
         bus: int = 0,
+        reg_len: int = 1,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout)
+        super().__init__(timeout=timeout, reg_len=reg_len)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
@@ -32,6 +33,10 @@ class AsyncI2cBridge(AsyncI2cTransport):
     @property
     def bridge(self) -> CarrotBridge:
         return self._bridge
+
+    @property
+    def transport(self) -> AsyncBaseTransport:
+        return self._bridge._underlying
 
     @property
     def is_open(self) -> bool:
@@ -51,48 +56,18 @@ class AsyncI2cBridge(AsyncI2cTransport):
     async def _read_impl(self, nbytes: int) -> bytes:
         return await self._bridge.read(nbytes)
 
-    async def read_from(self, addr: int | str, nbytes: int, timeout: float | None = None) -> bytes:
+    async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-        addr_str = f"0x{addr:X}" if isinstance(addr, int) else str(addr)
+        addr_str = f"0x{addr:X}"
         res = await self._bridge.call("IIC.R", addr_str, nbytes, timeout=timeout)
         return CarrotBridge.to_bytes(res, nbytes)
 
-    async def write_to(self, addr: int | str, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, addr: int, data: bytes, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
-        addr_str = f"0x{addr:X}" if isinstance(addr, int) else str(addr)
+        addr_str = f"0x{addr:X}"
         await self._bridge.call("IIC.W", addr_str, data, len(data), timeout=timeout)
-        return len(data)
-
-    async def read_reg(
-        self,
-        addr: int | str,
-        reg: int,
-        nbytes: int = 1,
-        regfile: int = 0,
-        timeout: float | None = None,
-    ) -> bytes:
-        if not self.is_open:
-            await self.open()
-        reg_len = (reg.bit_length() + 7) // 8 or 1
-        reg_bytes = reg.to_bytes(reg_len, byteorder="big")
-        await self.write_to(addr, reg_bytes, timeout=timeout)
-        return await self.read_from(addr, nbytes, timeout=timeout)
-
-    async def write_reg(
-        self,
-        addr: int | str,
-        reg: int,
-        data: bytes,
-        regfile: int = 0,
-        timeout: float | None = None,
-    ) -> int:
-        if not self.is_open:
-            await self.open()
-        reg_len = (reg.bit_length() + 7) // 8 or 1
-        reg_bytes = reg.to_bytes(reg_len, byteorder="big")
-        await self.write_to(addr, reg_bytes + data, timeout=timeout)
         return len(data)
 
     async def config_speed(self, speed_hz: int) -> None:

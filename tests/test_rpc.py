@@ -54,5 +54,6 @@ async def test_rpc_server_error_handling():
     client = cio.connect(url)
     with pytest.raises(cio.TransportError):
         await client.open()
+    await client.close()
 
     await rpc_server.stop()

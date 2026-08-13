@@ -54,6 +54,8 @@ class RingBufferLogger:
         items = list(self._entries)
         return items[-limit:]
 
+    get_entries = history
+
     def clear(self) -> None:
         self._entries.clear()
 

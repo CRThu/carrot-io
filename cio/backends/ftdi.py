@@ -187,20 +187,21 @@ class FtdiI2cTransport(AsyncI2cTransport):
     async def _read_impl(self, nbytes: int) -> bytes:
         return b""
 
-    async def read_from(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
+    async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self._is_open:
             await self.open()
         loop = asyncio.get_running_loop()
         port = self._i2c.get_port(addr)
         return await loop.run_in_executor(None, port.read, nbytes)
 
-    async def write_to(self, addr: int, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, addr: int, data: bytes, timeout: float | None = None) -> int:
         if not self._is_open:
             await self.open()
         loop = asyncio.get_running_loop()
         port = self._i2c.get_port(addr)
         await loop.run_in_executor(None, port.write, data)
         return len(data)
+
 
 
 class FtdiSpiTransport(AsyncSpiTransport):

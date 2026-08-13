@@ -147,7 +147,7 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
 | `cio/core/stream.py` | `AsyncStreamTransport` | 无界字节流基类。关联 `FifoBuffer`，实现 `read_until(delim)` 与 `read_exact(n)`。 |
 | `cio/core/packet.py` | `AsyncPacketTransport` | 有界报文基类。关联 `PacketQueue`，实现 `read_packet()` 与 `write_packet()`。 |
 | `cio/core/uart.py` | `AsyncUartTransport` | UART 串口参数控制与抽象 (baudrate, parity, stopbits, bytesize, rtscts)。 |
-| `cio/core/i2c.py` | `AsyncI2cTransport` | I2C 主机总线契约 (`read_from`, `write_to`, `read_reg`, `write_reg`)。 |
+| `cio/core/i2c.py` | `AsyncI2cTransport` | I2C 主机总线契约 (`read`, `write`, `read_reg`, `write_reg`)。 |
 | `cio/core/spi.py` | `AsyncSpiTransport` | SPI 全双工总线契约 (`transfer`)。 |
 | `cio/core/gpio.py` | `AsyncGpioPin` | GPIO 引脚契约 (`set_high`, `set_low`, `toggle`, `read_level`, `wait_for_edge`)。 |
 | `cio/core/codec.py` | `BaseCodec`, `LineCodec`, `FixedLengthCodec`, `FramedBinaryCodec`, `StructCodec` | 消息编解码器实现。 |

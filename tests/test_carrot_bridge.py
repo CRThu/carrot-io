@@ -144,15 +144,48 @@ async def test_i2c_bridge_full_coverage():
         pipe.push_rx(b"[RETURN]: 2\n")
 
     t = asyncio.create_task(respond_i2c_ops())
-    written = await i2c.write_to(0x50, b"\x12\x34")
+    written = await i2c.write(0x50, b"\x12\x34")
     assert written == 2
 
-    data = await i2c.read_from(0x50, 2)
+    data = await i2c.read(0x50, 2)
     assert data == b"\xAA\xBB"
 
     await i2c.config_speed(400000)
     await i2c.write_reg(0x50, reg=1, data=b"\xAA")
 
+    await t
+    await i2c.close()
+
+
+@pytest.mark.asyncio
+async def test_i2c_bridge_reg_len_default_and_override():
+    pipe = MockTransport()
+    i2c = AsyncI2cBridge(pipe, reg_len=2)
+    await i2c.open()
+
+    async def respond_ops():
+        # 1. 继承默认 reg_len=2：读 0xFFB1 自动发 2 字节地址 0xFFB1
+        while not pipe.tx_history:
+            await asyncio.sleep(0.005)
+        assert pipe.tx_history[-1] == b"IIC.W(0x57, 0xFFB1, 2)\n"
+        pipe.push_rx(b"[RETURN]: 2\n")
+
+        while len(pipe.tx_history) < 2:
+            await asyncio.sleep(0.005)
+        assert pipe.tx_history[-1] == b"IIC.R(0x57, 1)\n"
+        pipe.push_rx(b"[RETURN]: 0x07\n")
+
+        # 2. 单次覆盖 reg_len=1：写 0x05 显式传 reg_len=1 应该发 1 字节地址 0x05
+        while len(pipe.tx_history) < 3:
+            await asyncio.sleep(0.005)
+        assert pipe.tx_history[-1] == b"IIC.W(0x57, 0x05AA, 2)\n"
+        pipe.push_rx(b"[RETURN]: 2\n")
+
+    t = asyncio.create_task(respond_ops())
+    data = await i2c.read_reg(0x57, 0xFFB1, nbytes=1)
+    assert data == b"\x07"
+
+    await i2c.write_reg(0x57, 0x05, b"\xAA", reg_len=1)
     await t
     await i2c.close()
 

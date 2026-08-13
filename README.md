@@ -214,6 +214,7 @@ asyncio.run(main())
 通用 URL 工厂入口。解析 Scheme 并实例化对应的 Backend 或组合协议桥。
 - **示例**：`cio.connect("serial://COM3?baud=115200")`
 - **组合 URL**：`cio.connect("spi+tcp://192.168.1.100:5025")`（自动用 `AsyncSpiBridge` 包装 `TcpTransport`）
+- **I2C 组合 URL**：`cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2")`（自动用 `AsyncI2cBridge` 包装 `SerialTransport`，并配置全局默认 16 位寄存器地址长度）
 
 #### `cio.scan(kind: str | None = None) -> list[dict]`
 扫描全盘可用硬件设备。内部自动进行静默 Probe 试探，自动跳过未安装依赖的 Backend。
@@ -268,10 +269,11 @@ asyncio.run(main())
 ### 4. 总线协议与 GPIO 专属接口 (Bus & GPIO Interfaces)
 
 #### `AsyncI2cTransport` (I2C 主机总线)
-- **`async read_from(addr: int, nbytes: int, timeout: float | None = None) -> bytes`**：从从机地址 `addr` 读取 `nbytes` 字节。
-- **`async write_to(addr: int, data: bytes, timeout: float | None = None) -> int`**：向从机地址 `addr` 写入数据。
-- **`async read_reg(addr: int, reg: int, nbytes: int = 1, reg_size: int = 1, timeout: float | None = None) -> bytes`**：读取指定寄存器 `reg`。
-- **`async write_reg(addr: int, reg: int, data: bytes, reg_size: int = 1, timeout: float | None = None) -> int`**：写入指定寄存器 `reg`。
+- **`reg_len: int`**：支持通过 URL（如 `?reg_len=2`）或构造函数设置默认寄存器地址字节数（如 16 位地址 `reg_len=2`）。
+- **`async read(addr: int, nbytes: int, timeout: float | None = None) -> bytes`**：从从机地址 `addr` 读取 `nbytes` 字节。
+- **`async write(addr: int, data: bytes, timeout: float | None = None) -> int`**：向从机地址 `addr` 写入数据。
+- **`async read_reg(addr: int, reg: int, nbytes: int = 1, reg_len: int | None = None, timeout: float | None = None) -> bytes`**：读取指定寄存器 `reg`（未指定 `reg_len` 时继承全局默认 `default_reg_len`）。
+- **`async write_reg(addr: int, reg: int, data: bytes, reg_len: int | None = None, timeout: float | None = None) -> int`**：写入指定寄存器 `reg`（未指定 `reg_len` 时继承全局默认 `default_reg_len`）。
 
 #### `AsyncSpiTransport` (SPI 主机总线)
 - **`async transfer(tx_data: bytes, timeout: float | None = None) -> bytes`**：全双工收发传输，发送 `tx_data` 的同时接收相同长度的 `rx_data`。

@@ -90,15 +90,19 @@ class RpcRemoteTransport(AsyncStreamTransport):
         if not self._underlying.is_open:
             await self._underlying.open()
 
-        await self._send_rpc("open", {"url": self.target_url})
-        self._is_open = True
+        try:
+            await self._send_rpc("open", {"url": self.target_url})
+            self._is_open = True
+        except Exception:
+            if self._underlying.is_open:
+                await self._underlying.close()
+            raise
 
     async def close(self) -> None:
-        if not self._is_open:
-            return
         self._is_open = False
         try:
-            await self._send_rpc("close")
+            if self._underlying.is_open:
+                await self._send_rpc("close")
         except Exception:
             pass
         finally:
