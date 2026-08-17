@@ -39,9 +39,18 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     """
     Universal transport factory from URL specification.
     Supports composite schemes like `spi+tcp://192.168.1.100:5025` and `rpc+tcp://127.0.0.1:8000/COM1`.
+    Supports `?trace=true/on/1` to automatically enable live console tracing.
     """
     scheme, address, url_params = parse_url(url)
     merged_kwargs = {**url_params, **kwargs}
+
+    trace_opt = merged_kwargs.pop("trace", None)
+    trace_val: bool | None = None
+    if trace_opt is not None:
+        if isinstance(trace_opt, bool):
+            trace_val = trace_opt
+        else:
+            trace_val = str(trace_opt).strip().lower() in ("true", "1", "on", "yes")
 
     if "+" in scheme:
         parts = scheme.split("+", 1)
@@ -52,17 +61,17 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
             base_transport = connect(sub_url, **merged_kwargs)
             from cio.composite.gpio import AsyncGpioBridge
 
-            return AsyncGpioBridge(base_transport, **merged_kwargs)
+            transport: AsyncBaseTransport = AsyncGpioBridge(base_transport, **merged_kwargs)
         elif high_scheme == "i2c":
             base_transport = connect(sub_url, **merged_kwargs)
             from cio.composite.i2c import AsyncI2cBridge
 
-            return AsyncI2cBridge(base_transport, **merged_kwargs)
+            transport = AsyncI2cBridge(base_transport, **merged_kwargs)
         elif high_scheme == "spi":
             base_transport = connect(sub_url, **merged_kwargs)
             from cio.composite.spi import AsyncSpiBridge
 
-            return AsyncSpiBridge(base_transport, **merged_kwargs)
+            transport = AsyncSpiBridge(base_transport, **merged_kwargs)
         elif high_scheme == "rpc":
             from cio.composite.rpc import RpcRemoteTransport
 
@@ -80,9 +89,13 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
             target_query = ("?" + urllib.parse.urlencode(url_params)) if url_params else ""
             target_url = f"{base_scheme}://{target_path}{target_query}"
 
-            return RpcRemoteTransport(target_url=target_url, host=r_host, port=r_port, **merged_kwargs)
+            transport = RpcRemoteTransport(target_url=target_url, host=r_host, port=r_port, **merged_kwargs)
         else:
             raise InvalidUrlError(f"Unsupported high-level bridge in scheme: '{high_scheme}'")
+    else:
+        info = registry.get_backend_info(scheme)
+        transport = info.factory_cls(address=address, **merged_kwargs)  # type: ignore
 
-    info = registry.get_backend_info(scheme)
-    return info.factory_cls(address=address, **merged_kwargs)  # type: ignore
+    if trace_val is not None:
+        transport.trace = trace_val
+    return transport

@@ -37,7 +37,7 @@
 - **零强依赖**：核心库仅依赖 Python 3.12+ 标准库，启动时间 < 5ms。
 - **双重静默降级**：扫描设备时静默试探驱动；显式连接不可用 Backend 时抛出带明确安装指引的 `DriverMissingError` 异常。
 - **流式与块式分叉**：`AsyncStreamTransport`（关联 `FifoBuffer`）用于字节流；`AsyncPacketTransport`（关联 `PacketQueue`）用于报文。
-- **零开销热路径日志**：`RingBufferLogger` 仅记录原始 bytes 与时间戳，按需调用 `.history()` 渲染 Hexdump。
+- **零开销热路径日志**：`IoLogger` 线性保存原始 bytes 与时间戳，按需调用 `.history()` 或 `.dump()` 渲染 Hexdump。
 - **异步/同步双模**：原生 `asyncio` 支持，并通过 `.sync` 属性无缝适配同步代码库。
 
 ---
@@ -306,7 +306,52 @@ asyncio.run(main())
 
 ---
 
-### 7. 单元测试 Mock 工具 (Testing Utilities)
+### 7. 硬件验证与断言框架 (`cio.testing.Verifier`)
+
+`Verifier` 专为芯片验证、自动化冒烟测试和产测脚本设计，作为设备的测试代理，将执行、回读比对与测试看板输出合为一体：
+
+```python
+import cio
+from cio.testing import Verifier
+
+def run_chip_verify():
+    # 采用同步 with 上下文，开启 trace=on 实时查看总线时序
+    with cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2&trace=on") as dev:
+        v = Verifier(dev, continue_on_fail=True)
+
+        v.step("Read STATUS registers")
+        # 1. 显式读寄存器 + 预期值比对 (支持 int, hex list, bytes, mask)
+        v.read_reg(0x57, 0xFFB1, expected=0x07, mask=0x07, name="STATUS_REG")
+        v.read_reg(0x57, 0xFFB0, expected=0x10)
+
+        v.step("Write and Verify register")
+        # 2. 显式写寄存器 + check=True 自动回读比对
+        v.write_reg(0x57, 0xFFB4, 0x03, check=True)
+
+        v.step("EEPROM Write & Readback")
+        # 3. 数组写入与多字节比对
+        v.write_reg(0x57, 0x0020, [0x55] * 16)
+        v.sleep(0.1)
+        v.read_reg(0x57, 0x0020, nbytes=16, expected=[0x55] * 16)
+
+        # 4. 打印统计看板并返回布尔状态 (True 表示全部通过)
+        return v.summary()
+
+if __name__ == "__main__":
+    run_chip_verify()
+```
+
+---
+
+### 8. 实时 Trace 追踪与零开销日志
+
+- **URL 一键开启 Trace**：在任意 URL 中添加 `?trace=on` / `?trace=true` 即可实时以微秒级彩色高亮输出底层通信报文。
+- **故障现场 Dump**：调用 `dev.dump_history(limit=20)` 导出最近 N 条收发报文。
+- **多类型入参支持**：`write()`、`write_reg()`、`transfer()` 等接口均已支持原生传入单个 `int`（如 `0x03`）、整数列表（如 `[0x55] * 16`）及 `bytes`。
+
+---
+
+### 9. 单元测试 Mock 工具 (Testing Utilities)
 
 - **`MockTransport`**：内存模拟传输管道。
   - `push_rx(data: bytes)`：向接收缓冲区注入假数据。
@@ -315,6 +360,7 @@ asyncio.run(main())
 - **`MockGpioPin(initial_state: bool = False)`**：内存模拟 GPIO 引脚。
   - `state: bool`：当前电平状态。
   - `state_history: list[bool]`：电平变化历史记录。
+- **`Verifier(dev=None, auto_dump_on_fail=False)`**：硬件测试验证器。
 
 ---
 

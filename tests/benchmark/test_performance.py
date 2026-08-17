@@ -1,9 +1,9 @@
 """
-Performance benchmarks for FifoBuffer and RingBufferLogger hot paths.
+Performance benchmarks for FifoBuffer and IoLogger hot paths.
 """
 import time
 from cio.core.buffer import FifoBuffer
-from cio.core.logger import RingBufferLogger
+from cio.core.logger import IoLogger
 
 
 def test_benchmark_fifobuffer_throughput():
@@ -23,8 +23,8 @@ def test_benchmark_fifobuffer_throughput():
     assert throughput > 10.0
 
 
-def test_benchmark_ring_logger_hot_path():
-    logger = RingBufferLogger(max_entries=10000)
+def test_benchmark_io_logger_hot_path():
+    logger = IoLogger()
     data = b"\x01\x02\x03\x04\x05\x06\x07\x08"
     start = time.perf_counter()
 
@@ -35,5 +35,5 @@ def test_benchmark_ring_logger_hot_path():
 
     elapsed = time.perf_counter() - start
     ops_per_sec = (iterations * 2) / elapsed
-    print(f"\nRingBufferLogger Rate: {ops_per_sec:.0f} ops/sec (Elapsed: {elapsed:.4f}s)")
+    print(f"\nIoLogger Rate: {ops_per_sec:.0f} ops/sec (Elapsed: {elapsed:.4f}s)")
     assert ops_per_sec > 100000

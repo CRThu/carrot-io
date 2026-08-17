@@ -8,6 +8,7 @@ from typing import Any
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
 from cio.core.i2c import AsyncI2cTransport
+from cio.core.types import BytesLike, ensure_bytes
 
 
 class AsyncI2cBridge(AsyncI2cTransport):
@@ -21,13 +22,15 @@ class AsyncI2cBridge(AsyncI2cTransport):
         bus: int = 0,
         reg_len: int = 1,
         timeout: float | None = None,
+        trace: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout, reg_len=reg_len)
+        super().__init__(timeout=timeout, reg_len=reg_len, trace=trace)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
-            self._bridge = CarrotBridge(transport, timeout=timeout, **kwargs)
+            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, **kwargs)
+        self.logger = self._bridge.logger
         self.bus = bus
 
     @property
@@ -63,12 +66,13 @@ class AsyncI2cBridge(AsyncI2cTransport):
         res = await self._bridge.call("IIC.R", addr_str, nbytes, timeout=timeout)
         return CarrotBridge.to_bytes(res, nbytes)
 
-    async def write(self, addr: int, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
+        raw_data = ensure_bytes(data)
         addr_str = f"0x{addr:X}"
-        await self._bridge.call("IIC.W", addr_str, data, len(data), timeout=timeout)
-        return len(data)
+        await self._bridge.call("IIC.W", addr_str, raw_data, len(raw_data), timeout=timeout)
+        return len(raw_data)
 
     async def config_speed(self, speed_hz: int) -> None:
         await self._bridge.call("IIC.SPEED", speed_hz)

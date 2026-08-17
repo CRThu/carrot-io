@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import abc
 import asyncio
-import inspect
 import weakref
 from typing import TYPE_CHECKING, Any
 
 from cio.core.exceptions import ReadTimeoutError
-from cio.core.logger import LogEntry, RingBufferLogger
+from cio.core.logger import IoLogger, LogEntry
+from cio.core.types import BytesLike, ensure_bytes
 
 if TYPE_CHECKING:
     from cio.core.codec import BaseCodec
@@ -60,13 +60,21 @@ class SyncTransportWrapper:
     def is_open(self) -> bool:
         return self._async.is_open
 
-    def write(self, data: bytes, timeout: float | None = None) -> int:
+    @property
+    def trace(self) -> bool:
+        return self._async.trace
+
+    @trace.setter
+    def trace(self, value: bool) -> None:
+        self._async.trace = value
+
+    def write(self, data: BytesLike, timeout: float | None = None) -> int:
         return self._run_sync(self._async.write(data, timeout=timeout))
 
     def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:
         return self._run_sync(self._async.read(nbytes=nbytes, timeout=timeout))
 
-    def query(self, cmd: bytes, delay: float = 0.0, timeout: float | None = None) -> bytes:
+    def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:
         return self._run_sync(self._async.query(cmd, delay=delay, timeout=timeout))
 
     def flush(self) -> None:
@@ -74,6 +82,9 @@ class SyncTransportWrapper:
 
     def history(self, limit: int = 100) -> list[LogEntry]:
         return self._async.history(limit=limit)
+
+    def dump_history(self, limit: int = 20, color: bool = False) -> str:
+        return self._async.dump_history(limit=limit, color=color)
 
     def __enter__(self) -> SyncTransportWrapper:
         self.open()
@@ -88,10 +99,15 @@ class AsyncBaseTransport(abc.ABC):
     Abstract Base Class for all transport channels.
     """
 
-    def __init__(self, timeout: float | str | None = None, buffer_size: int = 1024 * 1024) -> None:
+    def __init__(
+        self,
+        timeout: float | str | None = None,
+        buffer_size: int = 1024 * 1024,
+        trace: bool = False,
+    ) -> None:
         self.timeout = float(timeout) if timeout is not None else None
         self.buffer_size = buffer_size
-        self.logger = RingBufferLogger(max_entries=1000)
+        self.logger = IoLogger(trace=trace)
 
         self._read_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
@@ -108,6 +124,14 @@ class AsyncBaseTransport(abc.ABC):
     @property
     def is_open(self) -> bool:
         return self._is_open
+
+    @property
+    def trace(self) -> bool:
+        return self.logger.trace
+
+    @trace.setter
+    def trace(self, value: bool) -> None:
+        self.logger.trace = bool(value)
 
     @property
     def sync(self) -> SyncTransportWrapper:
@@ -135,22 +159,23 @@ class AsyncBaseTransport(abc.ABC):
         """Subclass implementation for reading raw bytes."""
         raise NotImplementedError
 
-    async def write(self, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, data: BytesLike, timeout: float | None = None) -> int:
         """Write raw bytes concurrency-safely with optional timeout."""
         if not self._is_open:
             await self.open()
 
+        raw_data = ensure_bytes(data)
         effective_timeout = timeout if timeout is not None else self.timeout
         async with self._write_lock:
             if effective_timeout is not None:
                 try:
-                    written = await asyncio.wait_for(self._write_impl(data), timeout=effective_timeout)
+                    written = await asyncio.wait_for(self._write_impl(raw_data), timeout=effective_timeout)
                 except asyncio.TimeoutError as err:
                     raise ReadTimeoutError(f"Write operation timed out after {effective_timeout}s") from err
             else:
-                written = await self._write_impl(data)
+                written = await self._write_impl(raw_data)
 
-            self.logger.log_out(data[:written] if written else data)
+            self.logger.log_out(raw_data[:written] if written else raw_data)
             return written
 
     async def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:
@@ -171,7 +196,7 @@ class AsyncBaseTransport(abc.ABC):
             self.logger.log_in(data)
             return data
 
-    async def query(self, cmd: bytes, delay: float = 0.0, timeout: float | None = None) -> bytes:
+    async def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:
         """Write a command, wait delay if specified, and return response."""
         await self.write(cmd, timeout=timeout)
         if delay > 0:
@@ -185,6 +210,10 @@ class AsyncBaseTransport(abc.ABC):
     def history(self, limit: int = 100) -> list[LogEntry]:
         """Get history log entries."""
         return self.logger.history(limit=limit)
+
+    def dump_history(self, limit: int = 20, color: bool = False) -> str:
+        """Get formatted dump of recent TX/RX log entries."""
+        return self.logger.dump(limit=limit, color=color)
 
     def bind(self, codec: BaseCodec) -> ProtocolTransport:
         """Bind a Codec to return a high-level ProtocolTransport."""

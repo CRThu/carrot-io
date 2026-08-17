@@ -41,7 +41,7 @@
 1. **顶层快捷 API (`cio/__init__.py`, `factory.py`)**：统一快捷入口，解析 URL Scheme，处理 Registry 静默探测，实例化传输管道或组合协议桥。
 2. **Composite 协议桥层 (`cio/composite/`)**：实现 $O(N+M)$ 依赖注入，将原始传输管道适配为 SPI/I2C/RPC 等高级总线协议，无需重复编写物理后端驱动。
 3. **Codec & Protocol 编解码层 (`cio/core/codec.py`, `protocol.py`)**：负责原始 `bytes` 与强类型业务对象之间的双向转换（`LineCodec`, `FixedLengthCodec`, `FramedBinaryCodec`, `StructCodec`）。
-4. **核心抽象层 (`cio/core/`)**：定义传输基类 (`AsyncBaseTransport`)、并发保护锁 (`_read_lock`, `_write_lock`)、内存缓冲区 (`FifoBuffer`, `PacketQueue`)、零开销日志 (`RingBufferLogger`) 及分级异常体系。
+4. **核心抽象层 (`cio/core/`)**：定义传输基类 (`AsyncBaseTransport`)、并发保护锁 (`_read_lock`, `_write_lock`)、内存缓冲区 (`FifoBuffer`, `PacketQueue`)、零开销日志 (`IoLogger`) 及分级异常体系。
 5. **后端 Backend 层 (`cio/backends/`)**：延迟加载的物理与网络适配器 (`socket.py`, `serial.py`, `ftdi.py`, `visa.py`, `usb.py`)。
 
 ---
@@ -101,7 +101,7 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
   ├── 3. 若无，进入循环拉取：
   │      ├── 调用 `_read_impl()` (从 Socket/串口读取至多 4096 字节)。
   │      ├── 将新字节写入 FifoBuffer (应用 DROP_OLDEST 或 BACKPRESSURE 策略)。
-  │      └── 向 RingBufferLogger 追加日志 (仅记录 timestamp, "IN", 原始 bytes)。
+  │      └── 向 IoLogger 追加日志 (仅记录 timestamp, "IN", 原始 bytes)。
   └── 4. 找到 b"\n" 或超时 ( ReadTimeoutError ) 后返回字节。
 ```
 
@@ -141,22 +141,21 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
 
 ## 4. 全量模块与符号字典 (File & Symbol Dictionary)
 
-| 文件路径 | 导出符号 | 职责说明与核心逻辑 |
-| :--- | :--- | :--- |
-| `cio/core/base.py` | `AsyncBaseTransport`, `SyncTransportWrapper` | 传输基类。实现 `_read_lock`, `_write_lock`, `weakref.finalize` 析构、`sync` 属性及 `async with` / `with` 上下文。 |
+| `cio/core/types.py` | `BytesLike`, `ensure_bytes` | 核心类型别名与数据归一化（支持 `bytes`, `bytearray`, `int`, `list[int]`）。 |
+| `cio/core/base.py` | `AsyncBaseTransport`, `SyncTransportWrapper` | 传输基类。实现 `_read_lock`, `_write_lock`, `weakref.finalize` 析构、`sync` 属性、`trace` 属性、`dump_history()` 及 `async with` / `with` 上下文。 |
 | `cio/core/stream.py` | `AsyncStreamTransport` | 无界字节流基类。关联 `FifoBuffer`，实现 `read_until(delim)` 与 `read_exact(n)`。 |
 | `cio/core/packet.py` | `AsyncPacketTransport` | 有界报文基类。关联 `PacketQueue`，实现 `read_packet()` 与 `write_packet()`。 |
 | `cio/core/uart.py` | `AsyncUartTransport` | UART 串口参数控制与抽象 (baudrate, parity, stopbits, bytesize, rtscts)。 |
-| `cio/core/i2c.py` | `AsyncI2cTransport` | I2C 主机总线契约 (`read`, `write`, `read_reg`, `write_reg`)。 |
-| `cio/core/spi.py` | `AsyncSpiTransport` | SPI 全双工总线契约 (`transfer`)。 |
+| `cio/core/i2c.py` | `AsyncI2cTransport` | I2C 主机总线契约 (`read`, `write`, `read_reg`, `write_reg`)，支持 `reg_len` 自动扩展与 `verify` 参数。 |
+| `cio/core/spi.py` | `AsyncSpiTransport` | SPI 全双工总线契约 (`transfer`)，支持多类型入参。 |
 | `cio/core/gpio.py` | `AsyncGpioPin` | GPIO 引脚契约 (`set_high`, `set_low`, `toggle`, `read_level`, `wait_for_edge`)。 |
 | `cio/core/codec.py` | `BaseCodec`, `LineCodec`, `FixedLengthCodec`, `FramedBinaryCodec`, `StructCodec` | 消息编解码器实现。 |
 | `cio/core/protocol.py` | `ProtocolTransport` | `bind()` 产生的强类型协议绑定实例。 |
 | `cio/core/buffer.py` | `FifoBuffer`, `PacketQueue`, `OverflowPolicy` | 内存缓冲区，支持 `DROP_OLDEST` 与 `BACKPRESSURE` 溢出策略。 |
-| `cio/core/logger.py` | `RingBufferLogger`, `LogEntry` | 热路径零开销内存环形日志队列。 |
+| `cio/core/logger.py` | `IoLogger`, `LogEntry` | 热路径零开销内存线性日志队列，支持 `trace` 流式控制台打印、`dump()` 与 `add_listener`。 |
 | `cio/core/exceptions.py` | `TransportError`, `DriverMissingError`, `PythonPackageMissingError`, `CDllMissingError`, `ReadTimeoutError` 等 | 分级自定义异常体系。 |
 | `cio/core/registry.py` | `BackendRegistry`, `registry` | 后端注册表，处理静默探测与设备扫描。 |
-| `cio/core/factory.py` | `connect()`, `parse_url()` | 通用 URL 解析器与组合工厂。 |
+| `cio/core/factory.py` | `connect()`, `parse_url()` | 通用 URL 解析器与组合工厂，支持 `?trace=on` 自动开启 Trace。 |
 | `cio/backends/socket.py` | `TcpTransport`, `UdpTransport` | Asyncio TCP 字节流与 UDP 报文实现。 |
 | `cio/backends/serial.py` | `SerialTransport` | 硬件 UART 串口 PySerial 包装器。 |
 | `cio/backends/ftdi.py` | `FtdiUartTransport`, `FtdiI2cTransport`, `FtdiSpiTransport`, `FtdiGpioPin` | PyFTDI 硬件控制器适配器。 |
@@ -167,19 +166,24 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
 | `cio/composite/spi.py` | `AsyncSpiBridge` | SPI 全双工总线协议桥。 |
 | `cio/composite/rpc.py` | `RpcRemoteTransport`, `RpcServer`, `start_rpc_server` | JSON-RPC 2.0 跨机器 PC 硬件代理管道与守护进程网关。 |
 | `cio/testing/mock.py` | `MockTransport`, `MockGpioPin` | 内存 Mock 测试双重对象（支持自动应答与发送历史查看）。 |
+| `cio/testing/verifier.py` | `Verifier` | 同步硬件测试包装器与断言验证器（支持 `read_reg`, `write_reg`, `read`, `write`, `transfer`, `step`, `sleep`, `summary` 及故障现场 dump）。 |
 
 ---
 
 ## 5. 核心架构约束与编码准则
 
 1. **核心库零第三方顶层导入**：
-   `cio.core.*` 必须仅使用 Python 标准库。第三方扩展包（`pyserial`, `pyftdi`, `pyvisa`, `pyusb`）只能在 `cio.backends.*` 中延迟加载。
-2. **热路径零开销日志**：
-   `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用 `print/logger`。仅可调用 `self.logger.log_in(data)` / `log_out(data)` 保存原始 `bytes` 和时间戳。
-3. **并发保护锁作用域**：
+   `cio.core.*` 与 `cio.testing.*` 必须仅使用 Python 标准库。第三方扩展包（`pyserial`, `pyftdi`, `pyvisa`, `pyusb`）只能在 `cio.backends.*` 中延迟加载。
+2. **热路径零开销日志与全量留存**：
+   `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用 `print/logger`。`IoLogger` 采用无损线性内存追加，仅在 `.history()` 或 `.dump()` 时按需渲染。
+3. **显式 API 与精准强类型**：
+   - 严禁在 Wrapper 层使用 `*args` 盲猜或 `hasattr` 动态嗅探设备类型。
+   - 硬件接口必须显式对齐总线语义：`read_reg`（I2C 寄存器）、`write_reg`（I2C 寄存器）、`read`（流式）、`write`（流式）、`transfer`（SPI 全双工）。
+   - 数据入参统一使用 `BytesLike = bytes | bytearray | int | list[int]`，通过 `cio.core.types.ensure_bytes` 集中归一化。
+4. **并发保护锁作用域**：
    所有写入操作必须在 `async with self._write_lock:` 内执行；所有读取操作必须在 `async with self._read_lock:` 内执行。
-4. **降级与异常捕获规则**：
+5. **降级与异常捕获规则**：
    - 在 `probe()` / `scan()` 探测期间：静默捕获 `ImportError`, `ModuleNotFoundError`, `OSError`, `FileNotFoundError`, `WinError 126`。
    - 在 `open()` 显式连接期间：若缺失驱动，必须抛出带有明确安装指引的 `PythonPackageMissingError` 或 `CDllMissingError`。
-5. **测试验证**：
+6. **测试验证**：
    任何代码改动必须通过 `uv run --extra dev pytest -v -m "not hardware"` 验证。

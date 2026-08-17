@@ -32,6 +32,12 @@ async def test_carrot_bridge_basic_call():
 
     assert res == 0
     assert pipe.tx_history[0] == b"Motor_SetSpeed(1, 100)\n"
+    entries = bridge.logger.get_entries()
+    assert len(entries) == 2
+    assert entries[0].direction == "OUT"
+    assert b"Motor_SetSpeed" in entries[0].data
+    assert entries[1].direction == "IN"
+    assert b"[RETURN]: 0" in entries[1].data
     await bridge.close()
 
 

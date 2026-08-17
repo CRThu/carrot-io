@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport
+from cio.core.base import AsyncBaseTransport, ensure_bytes
 from cio.core.exceptions import ReadTimeoutError
 from cio.core.stream import AsyncStreamTransport
 
@@ -22,9 +22,10 @@ class CarrotBridge(AsyncBaseTransport):
         transport: AsyncBaseTransport,
         timeout: float | None = None,
         buffer_size: int = 1024 * 1024,
+        trace: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout, buffer_size=buffer_size)
+        super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)
         self._underlying: AsyncBaseTransport = transport
         self._pending_futures: list[asyncio.Future[Any]] = []
         self._recv_task: asyncio.Task[None] | None = None
@@ -55,7 +56,6 @@ class CarrotBridge(AsyncBaseTransport):
     async def _read_impl(self, nbytes: int) -> bytes:
         return await self._underlying.read(nbytes)
 
-
     def _start_recv_loop(self) -> None:
         if self._recv_task is None or self._recv_task.done():
             self._recv_task = asyncio.create_task(self._receive_loop())
@@ -82,6 +82,7 @@ class CarrotBridge(AsyncBaseTransport):
                     continue
 
                 if line_str.startswith("[RETURN]:"):
+                    self.logger.log_in(line, tag="RETURN")
                     raw_val = line_str[len("[RETURN]:"):].strip()
                     parsed = self._parse_return_val(raw_val)
                     if self._pending_futures:
@@ -89,7 +90,7 @@ class CarrotBridge(AsyncBaseTransport):
                         if not fut.done():
                             fut.set_result(parsed)
                 else:
-                    self.logger.log_in(line)
+                    self.logger.log_in(line, tag="MSG")
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -119,8 +120,8 @@ class CarrotBridge(AsyncBaseTransport):
     @staticmethod
     def to_bytes(res: Any, nbytes: int) -> bytes:
         """Helper to convert bridge response (int, hex str, or bytes) to target length bytes."""
-        if isinstance(res, bytes):
-            return res
+        if isinstance(res, (bytes, bytearray)):
+            return bytes(res)
         if isinstance(res, int):
             try:
                 return res.to_bytes(nbytes, byteorder="big")
@@ -140,7 +141,12 @@ class CarrotBridge(AsyncBaseTransport):
     @staticmethod
     def _format_arg(arg: Any) -> str:
         if isinstance(arg, (bytes, bytearray)):
-            return f"0x{arg.hex().upper()}"
+            return f"0x{bytes(arg).hex().upper()}"
+        if isinstance(arg, list):
+            try:
+                return f"0x{bytes(arg).hex().upper()}"
+            except (ValueError, TypeError):
+                pass
         return str(arg)
 
     async def call(self, func: str, *args: Any, timeout: float | None = None) -> Any:
@@ -159,7 +165,7 @@ class CarrotBridge(AsyncBaseTransport):
         actual_timeout = timeout if timeout is not None else self.timeout
 
         async with self._write_lock:
-            self.logger.log_out(cmd_bytes)
+            self.logger.log_out(cmd_bytes, tag="CMD")
             await self._underlying.write(cmd_bytes)
 
         try:

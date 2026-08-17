@@ -9,6 +9,7 @@ from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
 from cio.core.gpio import AsyncGpioPin
 from cio.core.spi import AsyncSpiTransport
+from cio.core.types import BytesLike, ensure_bytes
 
 
 class AsyncSpiBridge(AsyncSpiTransport):
@@ -23,13 +24,15 @@ class AsyncSpiBridge(AsyncSpiTransport):
         bus: int = 0,
         cs: int = 0,
         timeout: float | None = None,
+        trace: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout)
+        super().__init__(timeout=timeout, trace=trace)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:
-            self._bridge = CarrotBridge(transport, timeout=timeout, **kwargs)
+            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, **kwargs)
+        self.logger = self._bridge.logger
         self.bus = bus
         self.cs = cs
         self.cs_pin = cs_pin
@@ -60,17 +63,18 @@ class AsyncSpiBridge(AsyncSpiTransport):
     async def _read_impl(self, nbytes: int) -> bytes:
         return await self._bridge.read(nbytes)
 
-    async def write(self, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
 
+        raw_data = ensure_bytes(data)
         if self.cs_pin:
             await self.cs_pin.set_low()
 
         try:
             cs_val = self.cs if self.cs is not None else self.bus
-            await self._bridge.call("SPI.W", cs_val, data, len(data), timeout=timeout)
-            return len(data)
+            await self._bridge.call("SPI.W", cs_val, raw_data, len(raw_data), timeout=timeout)
+            return len(raw_data)
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()
@@ -90,17 +94,18 @@ class AsyncSpiBridge(AsyncSpiTransport):
             if self.cs_pin:
                 await self.cs_pin.set_high()
 
-    async def transfer(self, tx_data: bytes, timeout: float | None = None) -> bytes:
+    async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
 
+        raw_tx = ensure_bytes(tx_data)
         if self.cs_pin:
             await self.cs_pin.set_low()
 
         try:
             cs_val = self.cs if self.cs is not None else self.bus
-            res = await self._bridge.call("SPI.T", cs_val, tx_data, len(tx_data), timeout=timeout)
-            return CarrotBridge.to_bytes(res, len(tx_data))
+            res = await self._bridge.call("SPI.T", cs_val, raw_tx, len(raw_tx), timeout=timeout)
+            return CarrotBridge.to_bytes(res, len(raw_tx))
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()

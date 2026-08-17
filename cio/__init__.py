@@ -6,6 +6,8 @@ from __future__ import annotations
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 
 from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
+from cio.core.types import BytesLike, ensure_bytes
+from cio.core.logger import IoLogger, LogEntry
 from cio.core.stream import AsyncStreamTransport
 from cio.core.packet import AsyncPacketTransport
 from cio.core.uart import AsyncUartTransport
@@ -43,6 +45,7 @@ from cio.core.exceptions import (
 from cio.core.factory import connect
 from cio.core.registry import registry
 from cio.testing.mock import MockTransport, MockGpioPin
+from cio.testing.verifier import Verifier
 
 
 def scan(kind: str | None = None) -> list[dict]:
@@ -149,7 +152,12 @@ __all__ = [
     "WriteError",
     "FrameChecksumError",
     "InvalidUrlError",
+    "IoLogger",
+    "LogEntry",
+    "BytesLike",
+    "ensure_bytes",
     # Testing
     "MockTransport",
     "MockGpioPin",
+    "Verifier",
 ]
