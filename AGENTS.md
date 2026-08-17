@@ -2,6 +2,10 @@
 
 本文档为 `carrot-io`（包名：`cio`）硬件驱动抽象层项目的**权威架构规范与 AI Agent 开发者手册**。旨在让任何 AI Agent 或工程师**无需逐行阅读源码文件**，即可获得关于本项目的完整、精确心智模型与架构全貌。
 
+> 💡 **相关文档**：
+> - 📘 **用户态 API 契约与速查手册**：请参阅 [API.md](API.md)（含 URL Scheme 规范、总线方法签名、Verifier 测试断言及代码模板）。
+> - 📄 **下位机 ASCII 协议规范**：请参阅 [CARROT_PROTOCOL.md](CARROT_PROTOCOL.md)。
+
 ---
 
 ## 1. 系统五层 Decoupled 架构图

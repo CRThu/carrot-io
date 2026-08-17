@@ -69,3 +69,4 @@ async def test_mock_gpio():
 
     await pin.toggle()
     assert not await pin.read_level()
+

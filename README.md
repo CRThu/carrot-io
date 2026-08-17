@@ -9,6 +9,11 @@
 
 `carrot-io`（包名：`cio`）为工业仪表、串口设备、FTDI 芯片、TCP/UDP 网络管道、总线协议（SPI/I2C/UART）及自定义二进制/文本协议提供了统一的异步 (Asyncio) / 同步 (Sync) 双模抽象接口。
 
+> 📖 **文档导航**：
+> - 📘 **[API 参考与开发者速查手册 (API.md)](API.md)**：包含 URL 语法全景表、I2C/SPI/UART/GPIO 总线接口规范、`Verifier` 测试断言框架、RPC 代理及即拷即用模板。
+> - 🛠️ **[架构规范与 AI Agent 开发者手册 (AGENTS.md)](AGENTS.md)**：系统 5 层解耦架构、并发锁机制与底层设计约束。
+> - 📄 **[CarrotBridge 串口 ASCII 协议规范 (CARROT_PROTOCOL.md)](CARROT_PROTOCOL.md)**：硬件适配层下位机通讯指令集。
+
 ---
 
 ## 核心架构
