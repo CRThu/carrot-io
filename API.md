@@ -169,7 +169,10 @@ data = await dev.read_reg(addr=0x57, reg=0x0020, nbytes=16)              # 读 1
 await dev.write(addr=0x57, data=b"\xFF\xB6\xFF")                         # 向从机直接写原始字节
 raw = await dev.read(addr=0x57, nbytes=4)                                # 从从机直接读 4 字节
 
-# 3. 速率配置 (Bridge 专属)
+# 3. I2C 从机设备扫描 (返回 7-bit 地址列表)
+addrs = await dev.scan()                                                 # 返回如 [0x50, 0x57]
+
+# 4. 速率配置 (Bridge 专属)
 await dev.config_speed(400000)                                           # 设置 I2C 速率 400kHz
 ```
 *(💡 同步测试场景下对应使用 `v.read_reg(...)` 与 `v.write_reg(...)`)*

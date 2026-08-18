@@ -8,7 +8,7 @@ import cio
 from cio.composite.carrotbridge import CarrotBridge
 from cio.composite.i2c import AsyncI2cBridge
 from cio.composite.spi import AsyncSpiBridge
-from cio.core.types import ensure_bytes
+from cio.core.converters import ensure_bytes
 from cio.core.exceptions import IOOperationError, ReadTimeoutError
 from cio.core.i2c import AsyncI2cTransport
 from cio.testing.mock import MockTransport

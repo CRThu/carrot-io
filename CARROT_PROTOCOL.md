@@ -33,6 +33,7 @@
 | `IIC.W(addr, hex_data, len)` | `IIC.W(0x50, 0x1234, 2)` | 向指定 I2C 7位从机地址写入数据字节 | `[RETURN]: <written_len>` (如 `[RETURN]: 2`) |
 | `IIC.R(addr, len)` | `IIC.R(0x50, 2)` | 从指定 I2C 7位从机地址读取指定字节数 | `[RETURN]: <0x_hex_data>` (如 `[RETURN]: 0xAABB`) |
 | `IIC.SPEED(speed_hz)` | `IIC.SPEED(400000)` | 配置 I2C 总线速率 (Hz) | `[RETURN]: 0` |
+| `IIC.SCAN()` | `IIC.SCAN()` | 扫描 I2C 总线 7 位从机设备地址 (0x08~0x77) | `[RETURN]: <0x_hex_addrs>` (如 `[RETURN]: 0x50,0x57` 或 `[RETURN]: `) |
 
 ---
 

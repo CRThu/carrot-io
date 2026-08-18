@@ -1,204 +1,89 @@
 # AGENTS.md - 系统架构与 AI Agent 开发者手册
 
-本文档为 `carrot-io`（包名：`cio`）硬件驱动抽象层项目的**权威架构规范与 AI Agent 开发者手册**。旨在让任何 AI Agent 或工程师**无需逐行阅读源码文件**，即可获得关于本项目的完整、精确心智模型与架构全貌。
+本文档为 `carrot-io`（包名：`cio`）硬件抽象层的**权威架构规范与 AI Agent 开发者手册**。旨在让 Agent 无需逐行通读源码即可获得全库精准心智模型。
 
 > 💡 **相关文档**：
-> - 📘 **用户态 API 契约与速查手册**：请参阅 [API.md](API.md)（含 URL Scheme 规范、总线方法签名、Verifier 测试断言及代码模板）。
-> - 📄 **下位机 ASCII 协议规范**：请参阅 [CARROT_PROTOCOL.md](CARROT_PROTOCOL.md)。
+> - 📘 **用户态 API 手册**：[API.md](API.md)（URL 格式、总线方法签名、Verifier 测试模板）。
+> - 📄 **下位机 ASCII 协议**：[CARROT_PROTOCOL.md](CARROT_PROTOCOL.md)。
 
 ---
 
-## 1. 系统五层 Decoupled 架构图
-
-本系统采用 5 层解耦架构：
+## 1. 五层解耦架构与类继承体系
 
 ```text
- ┌─────────────────────────────────────────────────────────────────────────┐
- │                            1. 顶层快捷 API                              │
- │            cio.connect() / cio.scan() / cio.tcp() ...                   │
- └────────────────────────────────────┬────────────────────────────────────┘
-                                      │
- ┌────────────────────────────────────▼────────────────────────────────────┐
- │                    2. 高层 Composite 协议桥与 Protocol                  │
- │   [AsyncSpiBridge] [AsyncI2cBridge] [RpcRemoteTransport] [ProtocolTrans]│
- └────────────────────────────────────┬────────────────────────────────────┘
-                                      │ (依赖注入 Dependency Injection / Codec 绑定)
- ┌────────────────────────────────────▼────────────────────────────────────┐
- │                          3. 核心传输抽象层                              │
- │      AsyncStreamTransport (FifoBuffer) / AsyncPacketTransport (Queue)   │
- │         AsyncUartTransport / AsyncI2cTransport / AsyncSpiTransport      │
- └────────────────────────────────────┬────────────────────────────────────┘
-                                      │
- ┌────────────────────────────────────▼────────────────────────────────────┐
- │                      4. 硬件与网络适配器 Backends                        │
- │  [TcpTransport] [UdpTransport] [SerialTransport] [Ftdi*] [Visa/Usb Stub]│
- └────────────────────────────────────┬────────────────────────────────────┘
-                                      │ (延迟导入 & 静默探测 Silent Probing)
- ┌────────────────────────────────────▼────────────────────────────────────┐
- │                      5. 系统底层驱动与硬件句柄                           │
- │         Socket OS / PySerial / PyFTDI / C DLLs (visa32, libusb)         │
- └─────────────────────────────────────────────────────────────────────────┘
+ 1. 顶层入口:    cio.connect() / cio.scan() / cio.tcp() / cio.serial() / cio.Verifier
+ 2. 协议桥层:    AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
+ 3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
+ 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Visa* / Usb*
+ 5. 底层硬件驱动: asyncio Socket / PySerial / PyFTDI / C DLLs (visa32, libusb)
 ```
 
-### 层级职责分工
-
-1. **顶层快捷 API (`cio/__init__.py`, `factory.py`)**：统一快捷入口，解析 URL Scheme，处理 Registry 静默探测，实例化传输管道或组合协议桥。
-2. **Composite 协议桥层 (`cio/composite/`)**：实现 $O(N+M)$ 依赖注入，将原始传输管道适配为 SPI/I2C/RPC 等高级总线协议，无需重复编写物理后端驱动。
-3. **Codec & Protocol 编解码层 (`cio/core/codec.py`, `protocol.py`)**：负责原始 `bytes` 与强类型业务对象之间的双向转换（`LineCodec`, `FixedLengthCodec`, `FramedBinaryCodec`, `StructCodec`）。
-4. **核心抽象层 (`cio/core/`)**：定义传输基类 (`AsyncBaseTransport`)、并发保护锁 (`_read_lock`, `_write_lock`)、内存缓冲区 (`FifoBuffer`, `PacketQueue`)、零开销日志 (`IoLogger`) 及分级异常体系。
-5. **后端 Backend 层 (`cio/backends/`)**：延迟加载的物理与网络适配器 (`socket.py`, `serial.py`, `ftdi.py`, `visa.py`, `usb.py`)。
+### 类继承拓扑
+- **`AsyncBaseTransport`**（抽象基类：并发锁、`sync` 统一同步适配、`trace` 日志、`query`、析构）
+  - **`AsyncStreamTransport`** (关联 `FifoBuffer`) $\rightarrow$ `AsyncUartTransport` (`SerialTransport`, `FtdiUartTransport`), `TcpTransport`, `RpcRemoteTransport`, `MockTransport`
+  - **`AsyncPacketTransport`** (关联 `PacketQueue`) $\rightarrow$ `UdpTransport`, `UsbTransport`
+  - **`AsyncI2cTransport`** $\rightarrow$ `AsyncI2cBridge`, `FtdiI2cTransport`
+  - **`AsyncSpiTransport`** $\rightarrow$ `AsyncSpiBridge`, `FtdiSpiTransport`
+- **`AsyncGpioPin`**（抽象 GPIO 引脚接口）$\rightarrow$ `AsyncGpioBridge`, `FtdiGpioPin`, `MockGpioPin`
 
 ---
 
-## 2. 类继承体系与架构派生图
+## 2. 模块字典速查 (Module Map)
 
-```text
-AsyncBaseTransport (抽象基类: open, close, is_open, write, read, query, bind, sync)
- │
- ├── AsyncStreamTransport (无界字节流基类, 关联 FifoBuffer)
- │    ├── AsyncUartTransport (UART 串口参数抽象)
- │    │    ├── SerialTransport (PySerial 硬件串口)
- │    │    └── FtdiUartTransport (PyFTDI 串口驱动)
- │    ├── TcpTransport (TCP Socket asyncio 字节流)
- │    ├── RpcRemoteTransport (远程 RPC 包装管道)
- │    └── MockTransport (内存 Mock 单元测试管道)
- │
- ├── AsyncPacketTransport (有界报文基类, 关联 PacketQueue)
- │    ├── UdpTransport (UDP Datagram 报文 Socket)
- │    └── UsbTransport (PyUSB / libusb 原始 USB 存根)
- │
- ├── AsyncI2cTransport (I2C Master 主机总线)
- │    ├── AsyncI2cBridge (依赖注入 I2C 协议桥)
- │    └── FtdiI2cTransport (PyFTDI I2C 控制器)
- │
- └── AsyncSpiTransport (SPI 全双工总线)
-      ├── AsyncSpiBridge (依赖注入 SPI 协议桥)
-      └── FtdiSpiTransport (PyFTDI SPI 控制器)
-
-AsyncGpioPin (抽象 GPIO 引脚控制接口)
- ├── FtdiGpioPin (PyFTDI 硬件 GPIO 引脚)
- └── MockGpioPin (内存 Mock GPIO 引脚)
-```
+- **`cio.core`**（核心抽象层，**零第三方顶层依赖**）：
+  - **`converters`**：集中类型别名 `BytesLike`、上行序列化 (`ensure_bytes`, `to_hex_str`, `format_arg`) 与下行反序列化 (`parse_int`, `parse_bool`, `parse_hex_bytes`, `parse_int_list`)。
+  - **`base`**：`AsyncBaseTransport` 根类与通用 `SyncTransportWrapper` 同步调度器。
+  - **`stream` / `packet` / `i2c` / `spi` / `gpio` / `uart`**：各硬件总线标准契约。
+  - **`codec` / `protocol`**：数据编解码器与强类型协议绑定 (`dev.bind(codec)`)。
+  - **`buffer`**：`FifoBuffer`（流式无界缓冲）与 `PacketQueue`（报文队列，支持 `DROP_OLDEST` / `BACKPRESSURE`）。
+  - **`logger`**：`IoLogger`（热路径零开销内存线性队列，按需渲染 Hex/ASCII）。
+  - **`factory` / `registry`**：URL Scheme 解析分发与静默探测设备扫描。
+  - **`exceptions`**：分级异常体系（`DriverMissingError`, `ReadTimeoutError`, `IOOperationError` 等）。
+- **`cio.composite`**（协议桥层）：`carrotbridge`（极简 ASCII 管道）、`i2c` / `spi` / `gpio`（硬件协议桥）、`rpc`（跨机代理）。
+- **`cio.backends`**（延迟加载适配器）：`socket`, `serial`, `ftdi`, `visa`, `usb`。
+- **`cio.testing`**（测试组件）：`mock`（内存 Mock 设备）、`verifier`（断言验证器）。
 
 ---
 
-## 3. 核心数据流与控制时序
+## 3. 核心架构约束与编码红线（Golden Rules）
 
-### 流程 A：通用 URL 工厂解析 (`cio.connect`)
-
-```text
-用户调用 cio.connect("spi+tcp://192.168.1.100:5025?clock=10MHz")
-  │
-  ├── 1. factory.parse_url() 将 Scheme 拆解为高层 "spi" (Bridge) 与底层 "tcp" (Base Transport)。
-  ├── 2. factory.connect("tcp://192.168.1.100:5025") 查询 Registry 中的 "tcp"。
-  ├── 3. Registry 执行 probe_fn() -> 返回 True -> 实例化 TcpTransport(host="192.168.1.100", port=5025)。
-  └── 4. Factory 将 TcpTransport 注入 AsyncSpiBridge(tcp_transport, clock="10MHz") 中并返回。
-```
-
-### 流程 B：流式读取 (`read_until` / `read_exact`)
-
-```text
-用户调用 await dev.read_until(b"\n")
-  │
-  ├── 1. 获取 `_read_lock` (Task 并发安全保护)。
-  ├── 2. 检查内部 FifoBuffer 是否已包含 b"\n"。若有，直接切割返回。
-  ├── 3. 若无，进入循环拉取：
-  │      ├── 调用 `_read_impl()` (从 Socket/串口读取至多 4096 字节)。
-  │      ├── 将新字节写入 FifoBuffer (应用 DROP_OLDEST 或 BACKPRESSURE 策略)。
-  │      └── 向 IoLogger 追加日志 (仅记录 timestamp, "IN", 原始 bytes)。
-  └── 4. 找到 b"\n" 或超时 ( ReadTimeoutError ) 后返回字节。
-```
-
-### 流程 C：Protocol Codec 编解码绑定 (`dev.bind(codec)`)
-
-```text
-用户绑定 FramedBinaryCodec -> 生成 ProtocolTransport(dev, codec) 实例
-  │
-  ├── 写入路径: `await proto.write(payload)`
-  │     └── `codec.encode(payload)` 构建 [HEADER][LEN][PAYLOAD][CRC] -> 调用 `dev.write(raw_bytes)`
-  │
-  └── 读取路径: `msg = await proto.read()`
-        ├── 从 `dev.read()` 读取原始字节追加至内部 `_recv_buffer`。
-        ├── 将 `_recv_buffer` 传入 `codec.decode(buffer)`。
-        ├── 若数据不足构成一帧：返回 (None, 0)，继续等待后续字节。
-        ├── 若遇到损坏前缀：返回 (None, discard_len)，切割丢弃无用垃圾字节。
-        └── 若成功解码帧：返回 (decoded_message, consumed_len) 并切割缓冲区。
-```
-
-### 流程 D：静默探测与优雅降级 (`cio.scan()`)
-
-```text
-用户调用 cio.scan()
-  │
-  ├── 遍历已注册 Backend：["tcp", "udp", "serial", "ftdi", "visa", "usb"]
-  ├── 对每个 Backend：
-  │     ├── 在 try/except 保护下安全执行 `probe_fn()`。
-  │     ├── 静默捕获 ImportError, ModuleNotFoundError, OSError, FileNotFoundError, WinError 126。
-  │     ├── 若 Probe 失败 (如缺少 PyFTDI 或未安装 visa32.dll)：
-  │     │     └── 静默跳过该 Backend，不打日志也不抛出异常。
-  │     └── 若 Probe 成功：
-  │           └── 调用 `scan_fn()` 收集已发现的物理设备元数据字典。
-  └── 返回汇总后的硬件设备列表。
-```
-
----
-
-## 4. 全量模块与符号字典 (File & Symbol Dictionary)
-
-| `cio/core/types.py` | `BytesLike`, `ensure_bytes` | 核心类型别名与数据归一化（支持 `bytes`, `bytearray`, `int`, `list[int]`）。 |
-| `cio/core/base.py` | `AsyncBaseTransport`, `SyncTransportWrapper` | 传输基类。实现 `_read_lock`, `_write_lock`, `weakref.finalize` 析构、`sync` 属性、`trace` 属性、`dump_history()` 及 `async with` / `with` 上下文。 |
-| `cio/core/stream.py` | `AsyncStreamTransport` | 无界字节流基类。关联 `FifoBuffer`，实现 `read_until(delim)` 与 `read_exact(n)`。 |
-| `cio/core/packet.py` | `AsyncPacketTransport` | 有界报文基类。关联 `PacketQueue`，实现 `read_packet()` 与 `write_packet()`。 |
-| `cio/core/uart.py` | `AsyncUartTransport` | UART 串口参数控制与抽象 (baudrate, parity, stopbits, bytesize, rtscts)。 |
-| `cio/core/i2c.py` | `AsyncI2cTransport` | I2C 主机总线契约 (`read`, `write`, `read_reg`, `write_reg`)，支持 `reg_len` 自动扩展与 `verify` 参数。 |
-| `cio/core/spi.py` | `AsyncSpiTransport` | SPI 全双工总线契约 (`transfer`)，支持多类型入参。 |
-| `cio/core/gpio.py` | `AsyncGpioPin` | GPIO 引脚契约 (`set_high`, `set_low`, `toggle`, `read_level`, `wait_for_edge`)。 |
-| `cio/core/codec.py` | `BaseCodec`, `LineCodec`, `FixedLengthCodec`, `FramedBinaryCodec`, `StructCodec` | 消息编解码器实现。 |
-| `cio/core/protocol.py` | `ProtocolTransport` | `bind()` 产生的强类型协议绑定实例。 |
-| `cio/core/buffer.py` | `FifoBuffer`, `PacketQueue`, `OverflowPolicy` | 内存缓冲区，支持 `DROP_OLDEST` 与 `BACKPRESSURE` 溢出策略。 |
-| `cio/core/logger.py` | `IoLogger`, `LogEntry` | 热路径零开销内存线性日志队列，支持 `trace` 流式控制台打印、`dump()` 与 `add_listener`。 |
-| `cio/core/exceptions.py` | `TransportError`, `DriverMissingError`, `PythonPackageMissingError`, `CDllMissingError`, `ReadTimeoutError` 等 | 分级自定义异常体系。 |
-| `cio/core/registry.py` | `BackendRegistry`, `registry` | 后端注册表，处理静默探测与设备扫描。 |
-| `cio/core/factory.py` | `connect()`, `parse_url()` | 通用 URL 解析器与组合工厂，支持 `?trace=on` 自动开启 Trace。 |
-| `cio/backends/socket.py` | `TcpTransport`, `UdpTransport` | Asyncio TCP 字节流与 UDP 报文实现。 |
-| `cio/backends/serial.py` | `SerialTransport` | 硬件 UART 串口 PySerial 包装器。 |
-| `cio/backends/ftdi.py` | `FtdiUartTransport`, `FtdiI2cTransport`, `FtdiSpiTransport`, `FtdiGpioPin` | PyFTDI 硬件控制器适配器。 |
-| `cio/backends/visa.py` | `VisaTransport` | Phase 1 VISA 存根（连接时抛出 `CDllMissingError` 或 `PythonPackageMissingError`）。 |
-| `cio/backends/usb.py` | `UsbTransport` | Phase 1 USB 存根。 |
-| `cio/composite/gpio.py` | `AsyncGpioBridge` | GPIO 引脚控制协议桥。 |
-| `cio/composite/i2c.py` | `AsyncI2cBridge` | I2C 主机总线协议桥。 |
-| `cio/composite/spi.py` | `AsyncSpiBridge` | SPI 全双工总线协议桥。 |
-| `cio/composite/rpc.py` | `RpcRemoteTransport`, `RpcServer`, `start_rpc_server` | JSON-RPC 2.0 跨机器 PC 硬件代理管道与守护进程网关。 |
-| `cio/testing/mock.py` | `MockTransport`, `MockGpioPin` | 内存 Mock 测试双重对象（支持自动应答与发送历史查看）。 |
-| `cio/testing/verifier.py` | `Verifier` | 同步硬件测试包装器与断言验证器（支持 `read_reg`, `write_reg`, `read`, `write`, `transfer`, `step`, `sleep`, `summary` 及故障现场 dump）。 |
-
----
-
-## 5. 核心架构约束与编码准则
-
-1. **单一实现原则（Single Source of Truth / Pure Async Core）**：
-   - **底层 100% 纯异步实现**：所有传输后端、协议桥（I2C/SPI/GPIO/RPC）、编解码器及锁机制，内部必须且仅能以 `async def` 纯异步协程实现。
-   - **严禁重复编写专属同步类**：严禁在任何子模块/子类中各自复制手写独立的同步 Wrapper 类（如禁止出现 `SyncGpioPinWrapper`、`SyncI2cWrapper` 等冗余代码）。
-   - **全局统一通用同步适配**：外部同步支持统一由 `cio.core.base.SyncTransportWrapper` 以专属后台 Loop 线程 + 动态 `__getattr__` 统一调度。
-   - **双模极简人体工程学（Ergonomics）**：
-     - `with cio.connect(...) as dev:` 触发 `__enter__`，自动返回 `dev.sync`（同步视图），直接进行线性同步调用；
-     - `async with cio.connect(...) as dev:` 触发 `__aenter__`，返回原生异步实例，使用 `await dev.read_reg(...)`；
-     - 派生子对象（GPIO `pin`、Protocol `proto` 等）统一通过 `.sync` 属性随时显式获取同名同步视图。
-2. **默认无需保留向后兼容包袱（No Backward Compatibility by Default）**：
-   - **保持代码极致精炼**：重构、重命名或收敛架构时，**默认无需保留无用的历史别名、过渡胶水层或冗余兼容代码**。
-   - **显式询问原则**：若遇到确实可能影响用户核心工作流的破坏性变更，需主动向用户明确询问确认，严禁未经询问私自添加各种臃肿的别名和兼容垫片。
-3. **核心库零第三方顶层导入**：
-   `cio.core.*` 与 `cio.testing.*` 必须仅使用 Python 标准库。第三方扩展包（`pyserial`, `pyftdi`, `pyvisa`, `pyusb`）只能在 `cio.backends.*` 中延迟加载。
-4. **热路径零开销日志与全量留存**：
-   `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用 `print/logger`。`IoLogger` 采用无损线性内存追加，仅在 `.history()` 或 `.dump()` 时按需渲染。
-5. **显式 API 与精准强类型**：
-   - 严禁在 Wrapper 层使用 `*args` 盲猜或 `hasattr` 动态嗅探设备类型。
-   - 硬件接口必须显式对齐总线语义：`read_reg`（I2C 寄存器）、`write_reg`（I2C 寄存器）、`read`（流式）、`write`（流式）、`transfer`（SPI 全双工）。
-   - 数据入参统一使用 `BytesLike = bytes | bytearray | int | list[int]`，通过 `cio.core.types.ensure_bytes` 集中归一化。
-6. **并发保护锁作用域**：
-   所有写入操作必须在 `async with self._write_lock:` 内执行；所有读取操作必须在 `async with self._read_lock:` 内执行。
-7. **降级与异常捕获规则**：
-   - 在 `probe()` / `scan()` 探测期间：静默捕获 `ImportError`, `ModuleNotFoundError`, `OSError`, `FileNotFoundError`, `WinError 126`。
-   - 在 `open()` 显式连接期间：若缺失驱动，必须抛出带有明确安装指引的 `PythonPackageMissingError` 或 `CDllMissingError`。
-8. **测试验证**：
-   任何代码改动必须通过 `uv run --extra dev pytest -v -m "not hardware"` 验证。
+1. **纯异步核心与统一通用同步适配（Pure Async Core & Universal Sync Wrapper）**：
+   - 内部 100% 纯协程实现 (`async def`)，**严禁手写专属同步类**。
+   - 外部同步统一通过 `dev.sync`（由 `SyncTransportWrapper` 驱动后台专用 Loop 线程调度）；`with dev:` 自动进入同步视图，`async with dev:` 保持原生异步。
+2. **纯净顶层命名空间与零内部符号泄露（Clean Public API & Zero Symbol Pollution）**：
+   - `cio/__init__.py` 与 `__all__` **仅暴露顶层核心公共入口**（工厂函数、总线基类、分级异常、`Verifier`、`BytesLike`、`ensure_bytes`）。
+   - **严禁将内部转换工具（如 `format_arg`, `parse_*`, `to_hex_str`）泄露到顶层命名空间**。
+   - **严禁在类中挂载冗余的 `staticmethod` 别名**，各模块直接从 `cio.core.converters` 显式导入所需函数。
+3. **瘦基类接口与零抽象泄露（Lean ABC & Zero Abstraction Leakage）**：
+   - 抽象基类（`AsyncI2cTransport` 等）只定义该总线不可替代的核心物理契约（`read`, `write`, `transfer`）。
+   - 特定协议桥能力（如 `CarrotBridge` 的 `IIC.SCAN`, `SPEED`, `MODE`）**仅在对应 Composite 协议桥中实现**，严禁将其提升到基类作为 `@abc.abstractmethod` 污染其他物理后端。
+   - 基类中的可选扩展方法声明，默认必须直接抛出 `raise NotImplementedError("...")`。
+4. **严禁危险的纯软件伪兜底（No Dangerous Software Fallbacks / Zero Side Effects）**：
+   - 严禁在缺少硬件支持时，用盲目的业务读写（如用 `read(addr, 1)` 轮询 112 个地址模拟 I2C scan）充当默认兜底。这会破坏从机状态机（导致 FIFO 出队、标志清空、指针自增）且因超时累积造成数秒卡死。
+   - 硬件操作必须忠实对齐物理语义，不支持的功能直接显式抛异常。
+5. **集中式数据转换与类型安全（Single Source of Converters）**：
+   - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.core.converters` 中维护**。入参统一支持 `BytesLike`（`bytes`, `bytearray`, `int`, `list[int]`）并经由 `ensure_bytes` 归一化。
+   - 严禁到处手写 Ad-hoc 的散装 Hex 转换或多重 `try-except` 弱类型猜测。
+6. **热路径零开销与锁保护**：
+   - `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用控制台打印；`write` 必须受 `self._write_lock` 保护，`read` 必须受 `self._read_lock` 保护。
+7. **默认无需保留向后兼容包袱（No Backward Compatibility by Default）**：
+   - 重构收敛时，保持代码极致精炼，无需保留废弃别名和过渡胶水层。破坏性改动前显式向用户确认。
+8. **核心库零第三方顶层导入与分级探测错误（Zero-Dependency Core & Graceful Probing）**：
+   - `cio.core.*` 必须仅使用 Python 标准库。第三方扩展包只能在 `cio.backends.*` 中延迟加载。
+   - **扫描探测**（`cio.scan()`）：静默吞掉 `ImportError` / `OSError`，不中断主流程；
+   - **主动连接**（`cio.connect()` / `dev.open()`）：驱动缺失时必须抛出携带明确安装指引的 `DriverMissingError`（如 `PythonPackageMissingError`, `CDllMissingError`）。
+9. **先对齐后动手，严禁盲目修改（Discuss Before Modifying / Zero Guesswork）**：
+   - 在需求存在歧义、实现方式不确定、涉及多条技术路线选型或潜在重大影响时，**严禁盲目修改核心代码或凭空猜测实现**。
+   - 必须先进行充分的技术调研，梳理方案利弊与影响面，主动向用户发起讨论并达成一致共识后，方可着手实施代码。
+10. **适量且合理的中文注释（Meaningful Comments & Intent First）**：
+    - 在核心协议帧结构、复杂状态机流转、位运算、边界防御及非直观的架构决策处，**必须补充清晰、精炼的中文注释**。
+    - 注释重点阐明“为什么这么设计（Why）”与“物理/硬件约束”，杜绝简单的代码复述式废话注释，确保代码可维护、可追溯。
+11. **文档实时同步与过时清理（Documentation as Truth）**：
+    - 每次代码重构、接口调整或符号迁移后，**必须第一时间同步更新相关设计文档（如 [API.md](API.md)、[CARROT_PROTOCOL.md](CARROT_PROTOCOL.md) 等）中的过时内容**。
+    - 严禁代码已改动而文档仍残留旧接口、废弃参数或失效说明。
+12. **测试同步补齐与防回归验证（Full Test Coverage & Regression Prevention）**：
+    - 任何新特性、重构分支或异常防御修改，**必须同步补齐并更新对应的单元测试与集成测试用例**。
+    - 提交前必须执行 `uv run --extra dev pytest -v -m "not hardware"`，确保 100% 测试通过且无隐蔽回归。
+13. **及时暴露疑惑，严禁掩盖问题与盲目试错（Ask Early & Transparent Communication）**：
+    - 遇到未解疑惑、非预期异常、硬件协议冲突或环境阻塞时，**严禁盲目乱试乱改、编写临时 Hack 补丁粉饰太平或静默吞异常掩盖问题**。
+    - 必须第一时间停下，清晰梳理当前现象、核心矛盾与排查结果，主动向用户提出疑问并对齐确认。

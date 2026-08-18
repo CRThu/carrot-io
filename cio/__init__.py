@@ -6,7 +6,7 @@ from __future__ import annotations
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 
 from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
-from cio.core.types import BytesLike, ensure_bytes
+from cio.core.converters import BytesLike, ensure_bytes
 from cio.core.logger import IoLogger, LogEntry
 from cio.core.stream import AsyncStreamTransport
 from cio.core.packet import AsyncPacketTransport

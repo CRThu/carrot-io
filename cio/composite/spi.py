@@ -7,9 +7,9 @@ from typing import Any
 
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
+from cio.core.converters import BytesLike, ensure_bytes, parse_hex_bytes, parse_int
 from cio.core.gpio import AsyncGpioPin
 from cio.core.spi import AsyncSpiTransport
-from cio.core.types import BytesLike, ensure_bytes
 
 
 class AsyncSpiBridge(AsyncSpiTransport):
@@ -73,8 +73,8 @@ class AsyncSpiBridge(AsyncSpiTransport):
 
         try:
             cs_val = self.cs if self.cs is not None else self.bus
-            await self._bridge.call("SPI.W", cs_val, raw_data, len(raw_data), timeout=timeout)
-            return len(raw_data)
+            res = await self._bridge.call("SPI.W", cs_val, raw_data, len(raw_data), timeout=timeout)
+            return parse_int(res, default=len(raw_data))
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()
@@ -89,7 +89,7 @@ class AsyncSpiBridge(AsyncSpiTransport):
         try:
             cs_val = self.cs if self.cs is not None else self.bus
             res = await self._bridge.call("SPI.R", cs_val, nbytes, timeout=timeout)
-            return CarrotBridge.to_bytes(res, nbytes)
+            return parse_hex_bytes(res, nbytes=nbytes)
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()
@@ -105,7 +105,7 @@ class AsyncSpiBridge(AsyncSpiTransport):
         try:
             cs_val = self.cs if self.cs is not None else self.bus
             res = await self._bridge.call("SPI.T", cs_val, raw_tx, len(raw_tx), timeout=timeout)
-            return CarrotBridge.to_bytes(res, len(raw_tx))
+            return parse_hex_bytes(res, nbytes=len(raw_tx))
         finally:
             if self.cs_pin:
                 await self.cs_pin.set_high()

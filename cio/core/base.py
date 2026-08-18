@@ -10,9 +10,9 @@ import threading
 import weakref
 from typing import TYPE_CHECKING, Any
 
+from cio.core.converters import BytesLike, ensure_bytes
 from cio.core.exceptions import ReadTimeoutError
 from cio.core.logger import IoLogger, LogEntry
-from cio.core.types import BytesLike, ensure_bytes
 
 if TYPE_CHECKING:
     from cio.core.codec import BaseCodec

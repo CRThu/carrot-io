@@ -6,7 +6,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport, ensure_bytes
+from cio.core.base import AsyncBaseTransport
+from cio.core.converters import format_arg
 from cio.core.exceptions import ReadTimeoutError
 from cio.core.stream import AsyncStreamTransport
 
@@ -118,38 +119,6 @@ class CarrotBridge(AsyncBaseTransport):
                     return raw_val.lower() == "true"
                 return raw_val
 
-    @staticmethod
-    def to_bytes(res: Any, nbytes: int) -> bytes:
-        """Helper to convert bridge response (int, hex str, or bytes) to target length bytes."""
-        if isinstance(res, (bytes, bytearray)):
-            return bytes(res)
-        if isinstance(res, int):
-            try:
-                return res.to_bytes(nbytes, byteorder="big")
-            except OverflowError:
-                bit_len = res.bit_length() or 8
-                actual_len = (bit_len + 7) // 8
-                return res.to_bytes(actual_len, byteorder="big")
-        if isinstance(res, str):
-            hex_str = res
-            if hex_str.startswith(("0x", "0X")):
-                hex_str = hex_str[2:]
-            if len(hex_str) % 2 != 0:
-                hex_str = "0" + hex_str
-            return bytes.fromhex(hex_str)
-        return b""
-
-    @staticmethod
-    def _format_arg(arg: Any) -> str:
-        if isinstance(arg, (bytes, bytearray)):
-            return f"0x{bytes(arg).hex().upper()}"
-        if isinstance(arg, list):
-            try:
-                return f"0x{bytes(arg).hex().upper()}"
-            except (ValueError, TypeError):
-                pass
-        return str(arg)
-
     async def call(self, func: str, *args: Any, timeout: float | None = None) -> Any:
         if not self.is_open:
             await self.open()
@@ -158,7 +127,7 @@ class CarrotBridge(AsyncBaseTransport):
 
         self._pending_futures = [f for f in self._pending_futures if not f.done()]
 
-        formatted_args = [self._format_arg(a) for a in args]
+        formatted_args = [format_arg(a) for a in args]
         args_str = ", ".join(formatted_args)
         cmd_str = f"{func}({args_str})\n"
         cmd_bytes = cmd_str.encode("utf-8")

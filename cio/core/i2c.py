@@ -7,8 +7,8 @@ import abc
 from typing import Any
 
 from cio.core.base import AsyncBaseTransport
+from cio.core.converters import BytesLike, ensure_bytes
 from cio.core.exceptions import IOOperationError
-from cio.core.types import BytesLike, ensure_bytes
 
 
 class AsyncI2cTransport(AsyncBaseTransport):
@@ -35,6 +35,10 @@ class AsyncI2cTransport(AsyncBaseTransport):
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         """Write data to specified I2C device address."""
         raise NotImplementedError
+
+    async def scan(self, timeout: float | None = None) -> list[int]:
+        """Scan I2C bus for active 7-bit slave device addresses."""
+        raise NotImplementedError("I2C bus scanning is not supported by this transport")
 
     async def read_reg(
         self,

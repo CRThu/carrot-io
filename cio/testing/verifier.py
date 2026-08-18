@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
-from cio.core.types import BytesLike, ensure_bytes
+from cio.core.converters import BytesLike, ensure_bytes
 
 
 @dataclass(frozen=True, slots=True)

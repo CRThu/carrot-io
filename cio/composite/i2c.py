@@ -7,8 +7,15 @@ from typing import Any
 
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
+from cio.core.converters import (
+    BytesLike,
+    ensure_bytes,
+    parse_hex_bytes,
+    parse_int,
+    parse_int_list,
+    to_hex_str,
+)
 from cio.core.i2c import AsyncI2cTransport
-from cio.core.types import BytesLike, ensure_bytes
 
 
 class AsyncI2cBridge(AsyncI2cTransport):
@@ -62,17 +69,24 @@ class AsyncI2cBridge(AsyncI2cTransport):
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-        addr_str = f"0x{addr:X}"
-        res = await self._bridge.call("IIC.R", addr_str, nbytes, timeout=timeout)
-        return CarrotBridge.to_bytes(res, nbytes)
+        res = await self._bridge.call("IIC.R", to_hex_str(addr), nbytes, timeout=timeout)
+        return parse_hex_bytes(res, nbytes=nbytes)
 
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
         raw_data = ensure_bytes(data)
-        addr_str = f"0x{addr:X}"
-        await self._bridge.call("IIC.W", addr_str, raw_data, len(raw_data), timeout=timeout)
-        return len(raw_data)
+        res = await self._bridge.call("IIC.W", to_hex_str(addr), raw_data, len(raw_data), timeout=timeout)
+        return parse_int(res, default=len(raw_data))
+
+    async def scan(self, timeout: float | None = None) -> list[int]:
+        """
+        Scan I2C bus for active 7-bit slave device addresses using hardware IIC.SCAN command.
+        """
+        if not self.is_open:
+            await self.open()
+        res = await self._bridge.call("IIC.SCAN", timeout=timeout)
+        return parse_int_list(res)
 
     async def config_speed(self, speed_hz: int) -> None:
         await self._bridge.call("IIC.SPEED", speed_hz)

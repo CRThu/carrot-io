@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
+from cio.core.converters import parse_bool
 from cio.core.gpio import AsyncGpioPin
 
 
@@ -47,7 +48,7 @@ class AsyncGpioBridge(AsyncGpioPin):
 
     async def read_level(self) -> bool:
         res = await self._bridge.call("IO.R", self.pin)
-        return bool(res)
+        return parse_bool(res)
 
     async def config_mode(self, mode: str | int) -> None:
         """
