@@ -176,18 +176,29 @@ AsyncGpioPin (抽象 GPIO 引脚控制接口)
 
 ## 5. 核心架构约束与编码准则
 
-1. **核心库零第三方顶层导入**：
+1. **单一实现原则（Single Source of Truth / Pure Async Core）**：
+   - **底层 100% 纯异步实现**：所有传输后端、协议桥（I2C/SPI/GPIO/RPC）、编解码器及锁机制，内部必须且仅能以 `async def` 纯异步协程实现。
+   - **严禁重复编写专属同步类**：严禁在任何子模块/子类中各自复制手写独立的同步 Wrapper 类（如禁止出现 `SyncGpioPinWrapper`、`SyncI2cWrapper` 等冗余代码）。
+   - **全局统一通用同步适配**：外部同步支持统一由 `cio.core.base.SyncTransportWrapper` 以专属后台 Loop 线程 + 动态 `__getattr__` 统一调度。
+   - **双模极简人体工程学（Ergonomics）**：
+     - `with cio.connect(...) as dev:` 触发 `__enter__`，自动返回 `dev.sync`（同步视图），直接进行线性同步调用；
+     - `async with cio.connect(...) as dev:` 触发 `__aenter__`，返回原生异步实例，使用 `await dev.read_reg(...)`；
+     - 派生子对象（GPIO `pin`、Protocol `proto` 等）统一通过 `.sync` 属性随时显式获取同名同步视图。
+2. **默认无需保留向后兼容包袱（No Backward Compatibility by Default）**：
+   - **保持代码极致精炼**：重构、重命名或收敛架构时，**默认无需保留无用的历史别名、过渡胶水层或冗余兼容代码**。
+   - **显式询问原则**：若遇到确实可能影响用户核心工作流的破坏性变更，需主动向用户明确询问确认，严禁未经询问私自添加各种臃肿的别名和兼容垫片。
+3. **核心库零第三方顶层导入**：
    `cio.core.*` 与 `cio.testing.*` 必须仅使用 Python 标准库。第三方扩展包（`pyserial`, `pyftdi`, `pyvisa`, `pyusb`）只能在 `cio.backends.*` 中延迟加载。
-2. **热路径零开销日志与全量留存**：
+4. **热路径零开销日志与全量留存**：
    `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用 `print/logger`。`IoLogger` 采用无损线性内存追加，仅在 `.history()` 或 `.dump()` 时按需渲染。
-3. **显式 API 与精准强类型**：
+5. **显式 API 与精准强类型**：
    - 严禁在 Wrapper 层使用 `*args` 盲猜或 `hasattr` 动态嗅探设备类型。
    - 硬件接口必须显式对齐总线语义：`read_reg`（I2C 寄存器）、`write_reg`（I2C 寄存器）、`read`（流式）、`write`（流式）、`transfer`（SPI 全双工）。
    - 数据入参统一使用 `BytesLike = bytes | bytearray | int | list[int]`，通过 `cio.core.types.ensure_bytes` 集中归一化。
-4. **并发保护锁作用域**：
+6. **并发保护锁作用域**：
    所有写入操作必须在 `async with self._write_lock:` 内执行；所有读取操作必须在 `async with self._read_lock:` 内执行。
-5. **降级与异常捕获规则**：
+7. **降级与异常捕获规则**：
    - 在 `probe()` / `scan()` 探测期间：静默捕获 `ImportError`, `ModuleNotFoundError`, `OSError`, `FileNotFoundError`, `WinError 126`。
    - 在 `open()` 显式连接期间：若缺失驱动，必须抛出带有明确安装指引的 `PythonPackageMissingError` 或 `CDllMissingError`。
-6. **测试验证**：
+8. **测试验证**：
    任何代码改动必须通过 `uv run --extra dev pytest -v -m "not hardware"` 验证。

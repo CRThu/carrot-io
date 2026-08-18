@@ -70,3 +70,26 @@ async def test_mock_gpio():
     await pin.toggle()
     assert not await pin.read_level()
 
+
+def test_sync_protocol_transport():
+    dev = MockTransport()
+    with dev as sync_dev:
+        proto = sync_dev.bind(LineCodec())
+        dev.push_rx(b"HELLO_SYNC\n")
+        msg = proto.read()
+        assert msg == "HELLO_SYNC"
+
+        proto.write("REPLY_SYNC")
+        assert dev.tx_history == [b"REPLY_SYNC\n"]
+
+
+def test_sync_gpio_pin():
+    pin = MockGpioPin(initial_state=False)
+    assert not pin.sync.read_level()
+
+    pin.sync.set_high()
+    assert pin.sync.read_level()
+
+    pin.sync.toggle()
+    assert not pin.sync.read_level()
+

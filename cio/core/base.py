@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import inspect
+import threading
 import weakref
 from typing import TYPE_CHECKING, Any
 
@@ -29,56 +31,53 @@ def _finalize_transport(ref_dict: dict[str, Any]) -> None:
 
 class SyncTransportWrapper:
     """
-    Synchronous wrapper allowing non-async usage of AsyncBaseTransport.
+    Universal synchronous wrapper allowing non-async usage of any async target.
     """
 
-    def __init__(self, async_transport: AsyncBaseTransport) -> None:
-        self._async = async_transport
+    def __init__(self, async_target: Any) -> None:
+        self._async = async_target
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+            self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+            self._thread.start()
+        return self._loop
 
     def _run_sync(self, coro: Any) -> Any:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(asyncio.run, coro)
-                return future.result()
-        else:
-            return asyncio.run(coro)
+        loop = self._get_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
 
     def open(self) -> None:
         return self._run_sync(self._async.open())
 
     def close(self) -> None:
-        return self._run_sync(self._async.close())
+        try:
+            if getattr(self._async, "is_open", False):
+                self._run_sync(self._async.close())
+        finally:
+            if self._loop and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                if self._thread:
+                    self._thread.join(timeout=1.0)
+                self._loop.close()
+                self._loop = None
+                self._thread = None
 
     @property
     def is_open(self) -> bool:
-        return self._async.is_open
+        return bool(getattr(self._async, "is_open", False))
 
     @property
     def trace(self) -> bool:
-        return self._async.trace
+        return bool(getattr(self._async, "trace", False))
 
     @trace.setter
     def trace(self, value: bool) -> None:
         self._async.trace = value
-
-    def write(self, data: BytesLike, timeout: float | None = None) -> int:
-        return self._run_sync(self._async.write(data, timeout=timeout))
-
-    def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:
-        return self._run_sync(self._async.read(nbytes=nbytes, timeout=timeout))
-
-    def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:
-        return self._run_sync(self._async.query(cmd, delay=delay, timeout=timeout))
-
-    def flush(self) -> None:
-        return self._run_sync(self._async.flush())
 
     def history(self, limit: int = 100) -> list[LogEntry]:
         return self._async.history(limit=limit)
@@ -86,12 +85,30 @@ class SyncTransportWrapper:
     def dump_history(self, limit: int = 20, color: bool = False) -> str:
         return self._async.dump_history(limit=limit, color=color)
 
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._async, name)
+        if callable(attr):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                res = attr(*args, **kwargs)
+                if inspect.isawaitable(res):
+                    return self._run_sync(res)
+                if hasattr(res, "sync"):
+                    return res.sync
+                return res
+
+            # Fast-path caching: bind wrapper to instance __dict__ so subsequent calls bypass __getattr__ entirely
+            setattr(self, name, wrapper)
+            return wrapper
+        return attr
+
     def __enter__(self) -> SyncTransportWrapper:
-        self.open()
+        if hasattr(self._async, "open"):
+            self.open()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.close()
+        if hasattr(self._async, "close"):
+            self.close()
 
 
 class AsyncBaseTransport(abc.ABC):

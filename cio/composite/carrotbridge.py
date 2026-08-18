@@ -85,10 +85,11 @@ class CarrotBridge(AsyncBaseTransport):
                     self.logger.log_in(line, tag="RETURN")
                     raw_val = line_str[len("[RETURN]:"):].strip()
                     parsed = self._parse_return_val(raw_val)
-                    if self._pending_futures:
+                    while self._pending_futures:
                         fut = self._pending_futures.pop(0)
                         if not fut.done():
                             fut.set_result(parsed)
+                            break
                 else:
                     self.logger.log_in(line, tag="MSG")
             except asyncio.CancelledError:
@@ -152,6 +153,10 @@ class CarrotBridge(AsyncBaseTransport):
     async def call(self, func: str, *args: Any, timeout: float | None = None) -> Any:
         if not self.is_open:
             await self.open()
+        else:
+            self._start_recv_loop()
+
+        self._pending_futures = [f for f in self._pending_futures if not f.done()]
 
         formatted_args = [self._format_arg(a) for a in args]
         args_str = ", ".join(formatted_args)

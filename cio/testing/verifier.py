@@ -96,8 +96,6 @@ class Verifier:
         target = dev_arg if dev_arg is not None else self.dev
         if target is None:
             raise RuntimeError("No transport device bound to Verifier. Pass dev to Verifier(dev) or call with dev=...")
-        if isinstance(target, SyncTransportWrapper):
-            return target._async
         return target
 
     # ─── Section Divider & Sleep Helpers ─────────────────────────────────────

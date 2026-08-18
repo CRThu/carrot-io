@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from cio.core.exceptions import ReadTimeoutError
 
 if TYPE_CHECKING:
-    from cio.core.base import AsyncBaseTransport
+    from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
     from cio.core.codec import BaseCodec
 
 
@@ -23,6 +23,14 @@ class ProtocolTransport:
         self.codec = codec
         self._buffer = bytearray()
         self._lock = asyncio.Lock()
+        self._sync_wrapper: Any = None
+
+    @property
+    def sync(self) -> Any:
+        if self._sync_wrapper is None:
+            from cio.core.base import SyncTransportWrapper
+            self._sync_wrapper = SyncTransportWrapper(self)
+        return self._sync_wrapper
 
     @property
     def is_open(self) -> bool:
@@ -90,3 +98,9 @@ class ProtocolTransport:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
+
+    def __enter__(self) -> Any:
+        return self.sync.__enter__()
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        return self.sync.__exit__(exc_type, exc_val, exc_tb)

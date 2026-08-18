@@ -59,10 +59,23 @@
 
 ## 二、同步与异步双模调用范式
 
-`carrot-io` 核心采用 `asyncio` 原生驱动，并为不同场景提供了清晰的调用范式：
+`carrot-io` 采用 **底层 100% 纯异步核心 + 全局统一同步包装器（`SyncTransportWrapper`）** 的双模同构设计：
 
-### 1. 自动化硬件测试与断言范式 (使用 `Verifier` 同步包装器，推荐)
-在芯片中测、FT 验证及自动化测试脚本中，推荐结合 [cio.testing.Verifier](file:///d:/Projects/carrot-io/API.md#四硬件测试与断言框架-ciotestingverifier) 使用。`with` 同步打开连接后，由 `Verifier` 统一代理执行同步阻塞操作并记录记分板：
+### 1. 同步总线阻塞范式（硬件验证与测试推荐）
+使用标准 Python `with` 上下文，`dev` **自动返回同步包装视图**，可直接线性调用所有的总线读写方法：
+
+```python
+import cio
+
+with cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2&trace=on") as dev:
+    # 直接调用同步方法（无需 await，已内置快速路径优化）
+    dev.write_reg(0x57, 0xFFB6, 0xFF)
+    data = dev.read_reg(0x57, 0xFFB6, nbytes=1)
+    print("CP_CTRL readback:", data.hex())
+```
+
+### 2. 自动化断言验证范式（结合 `Verifier`，推荐中测/量产使用）
+结合 [cio.testing.Verifier](file:///d:/Projects/carrot-io/API.md#四硬件测试与断言框架-ciotestingverifier) 使用，提供结构化分步测试、期望值断言对比、现场 Hex Dump 与自动化记分板统计：
 
 ```python
 import cio
@@ -76,8 +89,8 @@ with cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2&trace=on") as dev:
     v.summary()
 ```
 
-### 2. 原生 Asyncio 异步范式 (全量总线方法与高并发流)
-适用于高性能网络转发、异步服务以及对原生 `asyncio` 总线协程的直接调用：
+### 3. 原生 Asyncio 异步协程范式（高并发服务/网络网关）
+使用 `async with` 上下文，`dev` 为原生异步实例，使用 `await` 调度：
 
 ```python
 import asyncio
@@ -92,21 +105,11 @@ async def main():
 asyncio.run(main())
 ```
 
-### 3. 基础通道同步阻塞范式 (Serial 串口 / TCP SCPI 仪表)
-针对纯流式硬件（串口、TCP Socket），`with` 上下文提供原生同步 `write` / `read` / `query` / `read_until` 操作：
-
-```python
-import cio
-
-with cio.connect("tcp://192.168.1.100:5025") as dev:
-    dev.write(b"*IDN?\n")
-    resp = dev.read_until(b"\n")
-    print("Instrument:", resp.decode().strip())
-```
-
-### 4. 属性转换
-- `async_dev.sync`：在异步对象上获取对应的同步包装器 `SyncTransportWrapper`。
-- `sync_dev._async`：在同步包装器上获取底层 `AsyncBaseTransport`。
+### 4. 派生子对象的双模属性转换
+所有通道及派生子对象（GPIO `pin`、Protocol `proto`）均支持随时通过 `.sync` 属性切换同步视图：
+- **GPIO 引脚**：`pin.sync.set_high()`（同步）/ `await pin.set_high()`（异步）
+- **协议绑定**：`proto.sync.write("msg")`（同步）/ `await proto.write("msg")`（异步）
+- **底层互转**：`async_dev.sync`（获取同步视图）/ `sync_dev._async`（获取底层原生异步对象）
 
 ---
 

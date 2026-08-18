@@ -4,13 +4,26 @@ GPIO Pin Abstraction (AsyncGpioPin).
 from __future__ import annotations
 
 import abc
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from cio.core.base import SyncTransportWrapper
 
 
 class AsyncGpioPin(abc.ABC):
     """
     Abstract Base Class for GPIO pin control.
     """
+
+    def __init__(self) -> None:
+        self._sync_wrapper: Any = None
+
+    @property
+    def sync(self) -> Any:
+        if not hasattr(self, "_sync_wrapper") or self._sync_wrapper is None:
+            from cio.core.base import SyncTransportWrapper
+            self._sync_wrapper = SyncTransportWrapper(self)
+        return self._sync_wrapper
 
     @abc.abstractmethod
     async def set_high(self) -> None:

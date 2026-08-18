@@ -194,13 +194,14 @@ class FtdiI2cTransport(AsyncI2cTransport):
         port = self._i2c.get_port(addr)
         return await loop.run_in_executor(None, port.read, nbytes)
 
-    async def write(self, addr: int, data: bytes, timeout: float | None = None) -> int:
+    async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self._is_open:
             await self.open()
+        raw_data = ensure_bytes(data)
         loop = asyncio.get_running_loop()
         port = self._i2c.get_port(addr)
-        await loop.run_in_executor(None, port.write, data)
-        return len(data)
+        await loop.run_in_executor(None, port.write, raw_data)
+        return len(raw_data)
 
 
 
@@ -277,11 +278,12 @@ class FtdiSpiTransport(AsyncSpiTransport):
     async def _read_impl(self, nbytes: int) -> bytes:
         return await self.transfer(b"\x00" * nbytes)
 
-    async def transfer(self, tx_data: bytes, timeout: float | None = None) -> bytes:
+    async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
         if not self._is_open:
             await self.open()
+        raw_tx = ensure_bytes(tx_data)
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._port.exchange, tx_data)
+        return await loop.run_in_executor(None, self._port.exchange, raw_tx)
 
 
 class FtdiGpioPin(AsyncGpioPin):

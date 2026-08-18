@@ -261,3 +261,42 @@ async def test_carrot_bridge_timeout():
         await bridge.call("SlowFunction")
 
     await bridge.close()
+
+
+def test_i2c_bridge_sync_context():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"IIC.W(0x57, 0x0102, 2)\n", b"[RETURN]: 2\n")
+    pipe.add_auto_reply(b"IIC.R(0x57, 1)\n", b"[RETURN]: 0xAA\n")
+    pipe.add_auto_reply(b"IIC.W(0x57, 0x1122, 2)\n", b"[RETURN]: 2\n")
+    i2c = AsyncI2cBridge(pipe, reg_len=2)
+
+    with i2c as dev:
+        data = dev.read_reg(0x57, 0x0102, nbytes=1)
+        assert data == b"\xAA"
+
+        # Direct multi-argument read and write
+        r = dev.read(0x57, 1)
+        assert r == b"\xAA"
+
+        w = dev.write(0x57, [0x11, 0x22])
+        assert w == 2
+
+
+def test_spi_bridge_sync_context():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"SPI.T(0, 0x1234, 2)\n", b"[RETURN]: 0x5678\n")
+    spi = AsyncSpiBridge(pipe, cs=0)
+
+    with spi as dev:
+        rx = dev.transfer(b"\x12\x34")
+        assert rx == b"\x56\x78"
+
+
+def test_gpio_bridge_sync_usage():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"IO.W(A1, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IO.R(A1)\n", b"[RETURN]: 1\n")
+    gpio = AsyncGpioBridge(pipe, pin="A1")
+
+    gpio.sync.set_high()
+    assert gpio.sync.read_level() is True
