@@ -181,12 +181,6 @@ class FtdiI2cTransport(AsyncI2cTransport):
             except Exception:
                 pass
 
-    async def _write_impl(self, data: bytes) -> int:
-        return len(data)
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        return b""
-
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self._is_open:
             await self.open()

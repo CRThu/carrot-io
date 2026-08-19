@@ -53,7 +53,12 @@ class RpcRemoteTransport(AsyncStreamTransport):
         self._msg_id += 1
         return self._msg_id
 
-    async def _send_rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
+    async def _send_rpc(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
         req_id = self._next_id()
         payload = {
             "jsonrpc": "2.0",
@@ -62,12 +67,13 @@ class RpcRemoteTransport(AsyncStreamTransport):
             "id": req_id,
         }
         msg = json.dumps(payload).encode("utf-8") + b"\n"
-        await self._underlying.write(msg, timeout=self.timeout)
+        actual_timeout = timeout if timeout is not None else self.timeout
+        await self._underlying.write(msg, timeout=actual_timeout)
 
         if isinstance(self._underlying, AsyncStreamTransport):
-            resp_bytes = await self._underlying.read_until(b"\n", timeout=self.timeout)
+            resp_bytes = await self._underlying.read_until(b"\n", timeout=actual_timeout)
         else:
-            resp_bytes = await self._underlying.read(-1, timeout=self.timeout)
+            resp_bytes = await self._underlying.read(-1, timeout=actual_timeout)
 
         if not resp_bytes:
             raise ConnectionError("RPC Server closed connection unexpectedly")
@@ -102,7 +108,7 @@ class RpcRemoteTransport(AsyncStreamTransport):
         self._is_open = False
         try:
             if self._underlying.is_open:
-                await self._send_rpc("close")
+                await self._send_rpc("close", timeout=0.1)
         except Exception:
             pass
         finally:

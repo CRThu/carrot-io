@@ -23,6 +23,7 @@ class AsyncGpioBridge(AsyncGpioPin):
         pin: int | str = 0,
         **kwargs: Any,
     ) -> None:
+        super().__init__()
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
         else:

@@ -18,7 +18,7 @@ class MockTransport(AsyncStreamTransport):
     def __init__(self, timeout: float | None = None, buffer_size: int = 1024 * 1024) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)
         self.tx_history: list[bytes] = []
-        self.rx_buffer = bytearray()
+        self._rx_raw = bytearray()
         self.auto_replies: dict[bytes, bytes] = {}
 
     async def open(self) -> None:
@@ -29,7 +29,7 @@ class MockTransport(AsyncStreamTransport):
 
     def push_rx(self, data: bytes) -> None:
         """Inject fake data into receive buffer for read operations."""
-        self.fifo.write(data)
+        self._rx_raw.extend(data)
 
     def add_auto_reply(self, pattern: bytes, reply: bytes) -> None:
         """Register pattern -> reply mapping."""
@@ -44,8 +44,13 @@ class MockTransport(AsyncStreamTransport):
         return len(data)
 
     async def _read_impl(self, nbytes: int) -> bytes:
-        if len(self.fifo) == 0:
-            await asyncio.sleep(0.001)
+        while self._is_open:
+            if self._rx_raw:
+                read_len = nbytes if nbytes > 0 else len(self._rx_raw)
+                chunk = bytes(self._rx_raw[:read_len])
+                del self._rx_raw[:read_len]
+                return chunk
+            await asyncio.sleep(0.005)
         return b""
 
 
@@ -55,6 +60,7 @@ class MockGpioPin(AsyncGpioPin):
     """
 
     def __init__(self, initial_state: bool = False) -> None:
+        super().__init__()
         self.state = initial_state
         self.state_history: list[bool] = [initial_state]
         self._edge_event = asyncio.Event()

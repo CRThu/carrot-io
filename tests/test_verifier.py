@@ -122,12 +122,6 @@ class MockI2cDevice(AsyncI2cTransport):
     async def close(self) -> None:
         self._is_open = False
 
-    async def _write_impl(self, data: bytes) -> int:
-        return len(data)
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        return b"\x00" * nbytes
-
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         return b"\xAA" * nbytes
 

@@ -57,15 +57,19 @@ async def test_carrot_bridge_non_return_logging():
     bridge = CarrotBridge(pipe)
     await bridge.open()
 
-    pipe.push_rx(b"[MSG]: System initialization complete\n")
-    pipe.push_rx(b"DEBUG: Sensor calibrated\n")
+    pipe.add_auto_reply(
+        b"Init()\n",
+        b"[MSG]: System initialization complete\nDEBUG: Sensor calibrated\n[RETURN]: 1\n",
+    )
 
-    await asyncio.sleep(0.05)
+    res = await bridge.call("Init")
+    assert res == 1
 
     entries = bridge.logger.get_entries()
-    assert len(entries) >= 2
-    assert b"[MSG]: System initialization complete" in entries[0].data
-    assert b"DEBUG: Sensor calibrated" in entries[1].data
+    assert len(entries) >= 4
+    assert any(b"[MSG]: System initialization complete" in e.data for e in entries)
+    assert any(b"DEBUG: Sensor calibrated" in e.data for e in entries)
+    assert any(b"[RETURN]: 1" in e.data for e in entries)
 
     await bridge.close()
 

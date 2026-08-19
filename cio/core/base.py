@@ -11,7 +11,7 @@ import weakref
 from typing import TYPE_CHECKING, Any
 
 from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ReadTimeoutError
+from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
 from cio.core.logger import IoLogger, LogEntry
 
 if TYPE_CHECKING:
@@ -29,6 +29,22 @@ def _finalize_transport(ref_dict: dict[str, Any]) -> None:
         pass
 
 
+class SyncableMixin:
+    """
+    Universal mixin providing lazy-initialized .sync wrapper for synchronous access.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._sync_wrapper: SyncTransportWrapper | None = None
+
+    @property
+    def sync(self) -> SyncTransportWrapper:
+        if getattr(self, "_sync_wrapper", None) is None:
+            self._sync_wrapper = SyncTransportWrapper(self)
+        return self._sync_wrapper
+
+
 class SyncTransportWrapper:
     """
     Universal synchronous wrapper allowing non-async usage of any async target.
@@ -38,13 +54,15 @@ class SyncTransportWrapper:
         self._async = async_target
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-            self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
-            self._thread.start()
-        return self._loop
+        with self._lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+                self._thread.start()
+            return self._loop
 
     def _run_sync(self, coro: Any) -> Any:
         loop = self._get_loop()
@@ -111,7 +129,7 @@ class SyncTransportWrapper:
             self.close()
 
 
-class AsyncBaseTransport(abc.ABC):
+class AsyncBaseTransport(abc.ABC, SyncableMixin):
     """
     Abstract Base Class for all transport channels.
     """
@@ -122,6 +140,7 @@ class AsyncBaseTransport(abc.ABC):
         buffer_size: int = 1024 * 1024,
         trace: bool = False,
     ) -> None:
+        super().__init__()
         self.timeout = float(timeout) if timeout is not None else None
         self.buffer_size = buffer_size
         self.logger = IoLogger(trace=trace)
@@ -129,7 +148,6 @@ class AsyncBaseTransport(abc.ABC):
         self._read_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
         self._is_open = False
-        self._sync_wrapper: SyncTransportWrapper | None = None
 
         self._cleanup_dict = {"cleanup": self._sync_cleanup}
         self._finalizer = weakref.finalize(self, _finalize_transport, self._cleanup_dict)
@@ -150,12 +168,6 @@ class AsyncBaseTransport(abc.ABC):
     def trace(self, value: bool) -> None:
         self.logger.trace = bool(value)
 
-    @property
-    def sync(self) -> SyncTransportWrapper:
-        if self._sync_wrapper is None:
-            self._sync_wrapper = SyncTransportWrapper(self)
-        return self._sync_wrapper
-
     @abc.abstractmethod
     async def open(self) -> None:
         """Open/establish physical or network connection."""
@@ -166,15 +178,13 @@ class AsyncBaseTransport(abc.ABC):
         """Close connection and release resources."""
         self._is_open = False
 
-    @abc.abstractmethod
     async def _write_impl(self, data: bytes) -> int:
-        """Subclass implementation for writing bytes."""
-        raise NotImplementedError
+        """Subclass implementation for writing bytes (stream/packet transports)."""
+        raise NotImplementedError(f"{self.__class__.__name__} does not implement raw byte stream write")
 
-    @abc.abstractmethod
     async def _read_impl(self, nbytes: int) -> bytes:
-        """Subclass implementation for reading raw bytes."""
-        raise NotImplementedError
+        """Subclass implementation for reading raw bytes (stream transports)."""
+        raise NotImplementedError(f"{self.__class__.__name__} does not implement raw byte stream read")
 
     async def write(self, data: BytesLike, timeout: float | None = None) -> int:
         """Write raw bytes concurrency-safely with optional timeout."""
@@ -188,7 +198,7 @@ class AsyncBaseTransport(abc.ABC):
                 try:
                     written = await asyncio.wait_for(self._write_impl(raw_data), timeout=effective_timeout)
                 except asyncio.TimeoutError as err:
-                    raise ReadTimeoutError(f"Write operation timed out after {effective_timeout}s") from err
+                    raise WriteTimeoutError(f"Write operation timed out after {effective_timeout}s") from err
             else:
                 written = await self._write_impl(raw_data)
 

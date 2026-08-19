@@ -148,3 +148,54 @@ def test_fifobuffer_edge_cases():
     buf.write(b"123456789")
     assert len(buf) == 5
     assert buf.read() == b"56789"
+
+
+@pytest.mark.asyncio
+async def test_write_timeout_error():
+    from cio.core.exceptions import WriteTimeoutError
+    from cio.testing.mock import MockTransport
+
+    class SlowWriteTransport(MockTransport):
+        async def _write_impl(self, data: bytes) -> int:
+            await asyncio.sleep(0.5)
+            return len(data)
+
+    dev = SlowWriteTransport()
+    await dev.open()
+    with pytest.raises(WriteTimeoutError):
+        await dev.write(b"HELLO", timeout=0.01)
+    await dev.close()
+
+
+def test_syncable_wrapper_multithreading():
+    import concurrent.futures
+    dev = MockTransport()
+    dev.add_auto_reply(b"PING", b"PONG")
+
+    with dev as d:
+        def call_sync():
+            return d.write(b"PING")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(call_sync) for _ in range(10)]
+            results = [f.result() for f in futures]
+            assert all(r == 4 for r in results)
+
+
+@pytest.mark.asyncio
+async def test_base_transport_default_not_implemented():
+    from cio.core.base import AsyncBaseTransport
+
+    class MinimalTransport(AsyncBaseTransport):
+        async def open(self) -> None:
+            self._is_open = True
+        async def close(self) -> None:
+            self._is_open = False
+
+    t = MinimalTransport()
+    await t.open()
+    with pytest.raises(NotImplementedError, match="does not implement raw byte stream write"):
+        await t.write(b"data")
+    with pytest.raises(NotImplementedError, match="does not implement raw byte stream read"):
+        await t.read(10)
+    await t.close()

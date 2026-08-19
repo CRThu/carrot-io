@@ -60,6 +60,11 @@ class ReadTimeoutError(IOOperationError, TimeoutError):
     pass
 
 
+class WriteTimeoutError(IOOperationError, TimeoutError):
+    """Raised when a write operation times out."""
+    pass
+
+
 class BufferOverflowError(IOOperationError):
     """Raised when the internal buffer overflows."""
     pass

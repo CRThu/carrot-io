@@ -6,31 +6,25 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from cio.core.base import SyncableMixin
 from cio.core.exceptions import ReadTimeoutError
 
 if TYPE_CHECKING:
-    from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
+    from cio.core.base import AsyncBaseTransport
     from cio.core.codec import BaseCodec
 
 
-class ProtocolTransport:
+class ProtocolTransport(SyncableMixin):
     """
     High-level bound protocol object operating on typed messages.
     """
 
     def __init__(self, transport: AsyncBaseTransport, codec: BaseCodec) -> None:
+        super().__init__()
         self.transport = transport
         self.codec = codec
         self._buffer = bytearray()
         self._lock = asyncio.Lock()
-        self._sync_wrapper: Any = None
-
-    @property
-    def sync(self) -> Any:
-        if self._sync_wrapper is None:
-            from cio.core.base import SyncTransportWrapper
-            self._sync_wrapper = SyncTransportWrapper(self)
-        return self._sync_wrapper
 
     @property
     def is_open(self) -> bool:
