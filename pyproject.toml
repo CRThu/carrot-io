@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "carrot-io"
-version = "1.4.0"
+version = "1.4.1"
 description = "A minimalist, zero-dependency, graceful-degradation hardware abstraction layer."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,7 +28,7 @@ markers = [
 ]
 
 [tool.bumpversion]
-current_version = "1.4.0"
+current_version = "1.4.1"
 commit = true
 tag = true
 allow_dirty = true
@@ -39,6 +39,10 @@ serialize = ["{major}.{minor}.{patch}"]
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "cio/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

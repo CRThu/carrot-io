@@ -106,7 +106,7 @@ def ftdi(
     return FtdiUartTransport(url=url, baud=baud, timeout=timeout, **kwargs)
 
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 __all__ = [
     # Factory & Scan
