@@ -100,8 +100,25 @@ class SyncTransportWrapper:
     def history(self, limit: int = 100) -> list[LogEntry]:
         return self._async.history(limit=limit)
 
-    def dump_history(self, limit: int = 20, color: bool = False) -> str:
-        return self._async.dump_history(limit=limit, color=color)
+    def dump_history(
+        self,
+        limit: int = 20,
+        color: bool = False,
+        show_hex: bool | None = None,
+        show_ascii: bool | None = None,
+        show_time: bool | None = None,
+        show_len: bool | None = None,
+        max_bytes: int | None = None,
+    ) -> str:
+        return self._async.dump_history(
+            limit=limit,
+            color=color,
+            show_hex=show_hex,
+            show_ascii=show_ascii,
+            show_time=show_time,
+            show_len=show_len,
+            max_bytes=max_bytes,
+        )
 
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._async, name)
@@ -139,11 +156,23 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
         timeout: float | str | None = None,
         buffer_size: int = 1024 * 1024,
         trace: bool = False,
+        show_hex: bool = True,
+        show_ascii: bool = True,
+        show_time: bool = True,
+        show_len: bool = True,
+        max_bytes: int = 64,
     ) -> None:
         super().__init__()
         self.timeout = float(timeout) if timeout is not None else None
         self.buffer_size = buffer_size
-        self.logger = IoLogger(trace=trace)
+        self.logger = IoLogger(
+            trace=trace,
+            show_hex=show_hex,
+            show_ascii=show_ascii,
+            show_time=show_time,
+            show_len=show_len,
+            max_bytes=max_bytes,
+        )
 
         self._read_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
@@ -238,9 +267,26 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
         """Get history log entries."""
         return self.logger.history(limit=limit)
 
-    def dump_history(self, limit: int = 20, color: bool = False) -> str:
+    def dump_history(
+        self,
+        limit: int = 20,
+        color: bool = False,
+        show_hex: bool | None = None,
+        show_ascii: bool | None = None,
+        show_time: bool | None = None,
+        show_len: bool | None = None,
+        max_bytes: int | None = None,
+    ) -> str:
         """Get formatted dump of recent TX/RX log entries."""
-        return self.logger.dump(limit=limit, color=color)
+        return self.logger.dump(
+            limit=limit,
+            color=color,
+            show_hex=show_hex,
+            show_ascii=show_ascii,
+            show_time=show_time,
+            show_len=show_len,
+            max_bytes=max_bytes,
+        )
 
     def bind(self, codec: BaseCodec) -> ProtocolTransport:
         """Bind a Codec to return a high-level ProtocolTransport."""

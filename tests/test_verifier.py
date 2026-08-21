@@ -326,3 +326,34 @@ def test_factory_trace_url():
 
     dev2 = cio.connect("tcp://127.0.0.1:5025?trace=false")
     assert dev2.trace is False
+
+
+def test_verifier_custom_logger_and_sleep_delegation():
+    from cio.core.logger import IoLogger
+
+    custom_logger = IoLogger(trace=False)
+    custom_output: list[str] = []
+
+    def my_writer(msg: str):
+        custom_output.append(msg)
+
+    # Verifier with custom logger and custom output writer
+    v = Verifier(logger=custom_logger)
+    v._print_fn = my_writer
+
+    v.step("Custom Step")
+    v.sleep(0.01)
+    v.check("Dummy Check", expected=0x01, actual=0x01)
+    v.summary()
+
+    # Verify sleep delegated to custom_logger
+    hist = custom_logger.history(limit=5)
+    assert len(hist) == 1
+    assert hist[0].tag == "DELAY"
+    assert hist[0].direction == "EVT"
+
+    # Verify output redirected to my_writer instead of stdout
+    combined_out = "\n".join(custom_output)
+    assert "=== Step 1: Custom Step ===" in combined_out
+    assert "[PASS] Dummy Check: 0x01" in combined_out
+    assert "VERIFICATION SUMMARY SCOREBOARD" in combined_out

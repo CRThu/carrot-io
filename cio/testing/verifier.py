@@ -13,6 +13,7 @@ from typing import Any
 
 from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
 from cio.core.converters import BytesLike, ensure_bytes
+from cio.core.logger import IoLogger
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,7 @@ class Verifier:
         continue_on_fail: bool = True,
         auto_dump_on_fail: bool = False,
         print_pass: bool = True,
+        logger: IoLogger | Callable[[str], None] | None = None,
     ) -> None:
         self.dev = dev
         self.continue_on_fail = continue_on_fail
@@ -63,6 +65,22 @@ class Verifier:
         self.results: list[CheckResult] = []
         self._current_step = 0
         self._start_time = time.time()
+
+        if isinstance(logger, IoLogger):
+            self.logger: IoLogger | None = logger
+            self._print_fn: Callable[[str], None] = print
+        elif callable(logger):
+            target = getattr(dev, "_async", dev) if dev else None
+            self.logger = getattr(target, "logger", None)
+            self._print_fn = logger
+        else:
+            target = getattr(dev, "_async", dev) if dev else None
+            self.logger = getattr(target, "logger", None)
+            self._print_fn = print
+
+    def _print(self, text: str = "") -> None:
+        """Centralized output printer for test step and assertion messages."""
+        self._print_fn(text)
 
     @property
     def pass_count(self) -> int:
@@ -106,23 +124,15 @@ class Verifier:
         use_color = sys.stdout.isatty()
         header = f"=== Step {self._current_step}: {title} ==="
         if use_color:
-            print(f"\n\033[1;36m{header}\033[0m")
+            self._print(f"\n\033[1;36m{header}\033[0m")
         else:
-            print(f"\n{header}")
+            self._print(f"\n{header}")
 
     def sleep(self, seconds: float) -> None:
-        """Sleep for specified seconds and log delay event to trace if available."""
-        if self.dev is not None:
-            target = getattr(self.dev, "_async", self.dev)
-            logger = getattr(target, "logger", None)
-            if logger and getattr(logger, "trace", False):
-                ms = int(seconds * 1000)
-                t_str = time.strftime("%H:%M:%S", time.localtime())
-                use_color = sys.stdout.isatty()
-                if use_color:
-                    print(f"\033[90m[{t_str}]\033[0m \033[33m[DELAY]\033[0m {ms}ms ({seconds}s)")
-                else:
-                    print(f"[{t_str}] [DELAY] {ms}ms ({seconds}s)")
+        """Sleep for specified seconds and log delay event to logger if available."""
+        if self.logger is not None:
+            ms = int(seconds * 1000)
+            self.logger.log_event("DELAY", f"{ms}ms", meta={"seconds": seconds, "ms": ms})
         time.sleep(seconds)
 
     # ─── Assertion Engine ───────────────────────────────────────────────────
@@ -161,13 +171,13 @@ class Verifier:
 
         if ok:
             if self.print_pass:
-                print(f"[{tag}] {name}: 0x{act_hex}")
+                self._print(f"[{tag}] {name}: 0x{act_hex}")
         else:
-            print(f"[{tag}] {name}: Expected 0x{exp_hex}, Got 0x{act_hex}")
+            self._print(f"[{tag}] {name}: Expected 0x{exp_hex}, Got 0x{act_hex}")
             if self.auto_dump_on_fail and self.dev is not None:
-                print("--- Communication Trace on Failure ---")
-                print(self.dev.dump_history(limit=10, color=use_color))
-                print("---------------------------------------")
+                self._print("--- Communication Trace on Failure ---")
+                self._print(self.dev.dump_history(limit=10, color=use_color))
+                self._print("---------------------------------------")
 
             if not self.continue_on_fail:
                 raise AssertionError(f"Verification failed for '{name}': Expected 0x{exp_hex}, Got 0x{act_hex}")
@@ -187,7 +197,7 @@ class Verifier:
         )
         use_color = sys.stdout.isatty()
         tag = "\033[31mFAIL\033[0m" if use_color else "FAIL"
-        print(f"[{tag}] {name}: <ERROR: {type(err).__name__}: {err}>")
+        self._print(f"[{tag}] {name}: <ERROR: {type(err).__name__}: {err}>")
 
     # ─── Explicit Bus / Register Wrappers ───────────────────────────────────
 
@@ -379,13 +389,13 @@ class Verifier:
         duration = time.time() - self._start_time
         use_color = sys.stdout.isatty()
 
-        print("\n" + "=" * 50)
-        print("           VERIFICATION SUMMARY SCOREBOARD       ")
-        print("=" * 50)
-        print(f"Total Checks  : {total}")
-        print(f"Passed        : {passed}")
-        print(f"Failed        : {failed}")
-        print(f"Duration      : {duration:.3f}s")
+        self._print("\n" + "=" * 50)
+        self._print("           VERIFICATION SUMMARY SCOREBOARD       ")
+        self._print("=" * 50)
+        self._print(f"Total Checks  : {total}")
+        self._print(f"Passed        : {passed}")
+        self._print(f"Failed        : {failed}")
+        self._print(f"Duration      : {duration:.3f}s")
 
         if total == 0:
             status_text = "NO CHECKS"
@@ -397,7 +407,7 @@ class Verifier:
             status_text = "FAILED"
             status_line = f"\033[31m{status_text}\033[0m" if use_color else status_text
 
-        print(f"Status        : {status_line}")
-        print("=" * 50 + "\n")
+        self._print(f"Status        : {status_line}")
+        self._print("=" * 50 + "\n")
 
         return total > 0 and failed == 0

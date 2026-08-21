@@ -42,7 +42,9 @@ from cio.core.exceptions import (
     WriteError,
     FrameChecksumError,
     InvalidUrlError,
+    DeviceConfigError,
 )
+from cio.core.env import dev
 from cio.core.factory import connect
 from cio.core.registry import registry
 from cio.testing.mock import MockTransport, MockGpioPin
@@ -109,6 +111,8 @@ def ftdi(
 __version__ = "1.4.1"
 
 __all__ = [
+    # Singleton & Env Injection
+    "dev",
     # Factory & Scan
     "connect",
     "scan",
@@ -154,6 +158,7 @@ __all__ = [
     "WriteError",
     "FrameChecksumError",
     "InvalidUrlError",
+    "DeviceConfigError",
     "IoLogger",
     "LogEntry",
     "BytesLike",

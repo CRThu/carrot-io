@@ -52,6 +52,12 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
         else:
             trace_val = str(trace_opt).strip().lower() in ("true", "1", "on", "yes")
 
+    show_hex_opt = merged_kwargs.pop("show_hex", None)
+    show_ascii_opt = merged_kwargs.pop("show_ascii", None)
+    show_time_opt = merged_kwargs.pop("show_time", None)
+    show_len_opt = merged_kwargs.pop("show_len", None)
+    max_bytes_opt = merged_kwargs.pop("max_bytes", None)
+
     if "+" in scheme:
         parts = scheme.split("+", 1)
         high_scheme, base_scheme = parts[0], parts[1]
@@ -98,4 +104,14 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
 
     if trace_val is not None:
         transport.trace = trace_val
+    if show_hex_opt is not None:
+        transport.logger.show_hex = bool(show_hex_opt)
+    if show_ascii_opt is not None:
+        transport.logger.show_ascii = bool(show_ascii_opt)
+    if show_time_opt is not None:
+        transport.logger.show_time = bool(show_time_opt)
+    if show_len_opt is not None:
+        transport.logger.show_len = bool(show_len_opt)
+    if max_bytes_opt is not None:
+        transport.logger.max_bytes = int(max_bytes_opt)
     return transport

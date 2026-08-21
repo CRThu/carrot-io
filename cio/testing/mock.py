@@ -4,9 +4,10 @@ Mock Objects for Unit Testing (MockTransport and MockGpioPin).
 from __future__ import annotations
 
 import asyncio
-from typing import Literal
+from typing import Any, Literal
 
 from cio.core.gpio import AsyncGpioPin
+from cio.core.registry import registry
 from cio.core.stream import AsyncStreamTransport
 
 
@@ -15,8 +16,15 @@ class MockTransport(AsyncStreamTransport):
     In-memory Mock Transport for testing protocol drivers without real hardware.
     """
 
-    def __init__(self, timeout: float | None = None, buffer_size: int = 1024 * 1024) -> None:
+    def __init__(
+        self,
+        address: str = "",
+        timeout: float | None = None,
+        buffer_size: int = 1024 * 1024,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)
+        self.address = address
         self.tx_history: list[bytes] = []
         self._rx_raw = bytearray()
         self.auto_replies: dict[bytes, bytes] = {}
@@ -116,3 +124,12 @@ class MockGpioPin(AsyncGpioPin):
                 return True
             if edge == "both" and initial != current:
                 return True
+
+
+registry.register(
+    name="mock",
+    schemes=["mock"],
+    factory_cls=MockTransport,
+    probe_fn=lambda: True,
+    scan_fn=lambda: [],
+)

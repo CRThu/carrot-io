@@ -12,7 +12,7 @@ from typing import Any, Callable, Literal
 @dataclass(frozen=True, slots=True)
 class LogEntry:
     timestamp: float
-    direction: Literal["IN", "OUT"]
+    direction: Literal["IN", "OUT", "EVT"] | str
     data: bytes
     tag: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
@@ -33,30 +33,77 @@ class LogEntry:
         """Render a formatted hexdump string for display on demand."""
         return self.format_line(color=False, max_bytes=max_bytes)
 
-    def format_line(self, color: bool = False, max_bytes: int = 64) -> str:
-        """Render a single formatted log line with optional ANSI colors."""
+    def format_line(
+        self,
+        color: bool = False,
+        max_bytes: int = 64,
+        show_hex: bool = True,
+        show_ascii: bool = True,
+        show_time: bool = True,
+        show_len: bool = True,
+    ) -> str:
+        """Render a single formatted log line with customizable fields and optional ANSI colors."""
+        # 1. Timestamp part
+        time_part = ""
+        if show_time:
+            time_part = f"\033[90m[{self.time_str}]\033[0m " if color else f"[{self.time_str}] "
+
+        # 2. Direction and Tag part (3-char dir, 6-char tag for perfect grid alignment)
+        if self.direction == "EVT":
+            dir_code = "EVT"
+            dir_str = f"\033[33m[{dir_code}]\033[0m" if color else f"[{dir_code}]"
+        elif self.direction == "IN":
+            dir_code = "IN "
+            dir_str = f"\033[32m[{dir_code}]\033[0m" if color else f"[{dir_code}]"
+        else:
+            dir_code = f"{self.direction:<3}"
+            dir_str = f"\033[36m[{dir_code}]\033[0m" if color else f"[{dir_code}]"
+
+        tag_part = f" [{self.tag:<6}]" if self.tag else ""
+
+        # 3. Length part (only for data frames, not for events)
+        len_part = ""
+        if show_len and self.direction != "EVT":
+            len_part = f"\033[33m({len(self.data)}B)\033[0m" if color else f"({len(self.data)}B)"
+
+        prefix_parts = [f"{time_part}{dir_str}{tag_part}".strip()]
+        if len_part:
+            prefix_parts.append(len_part)
+        prefix = " ".join(prefix_parts)
+
+        # Handle EVT payload directly as UTF-8 string
+        if self.direction == "EVT":
+            msg = self.data.decode("utf-8", errors="replace")
+            return f"{prefix} {msg}".strip()
+
         truncated = len(self.data) > max_bytes
         view = self.data[:max_bytes]
-        hex_str = " ".join(f"{b:02X}" for b in view)
-        if truncated:
-            hex_str += f" ... ({len(self.data)} bytes total)"
 
-        tag_part = f" [{self.tag}]" if self.tag else ""
+        # 4. Data payload formatting (Hex and/or ASCII)
+        hex_str = ""
+        if show_hex:
+            h = " ".join(f"{b:02X}" for b in view)
+            if truncated:
+                h += f" ... ({len(self.data)} bytes total)"
+            hex_str = h
 
-        # Check if ASCII representation is helpful
-        ascii_repr = ""
-        if any(32 <= b <= 126 for b in view):
-            clean_str = "".join(chr(b) if 32 <= b <= 126 else "." for b in view)
-            ascii_repr = f" | {clean_str}"
+        ascii_str = ""
+        if show_ascii:
+            has_printable = any(32 <= b <= 126 for b in view)
+            if has_printable:
+                clean_str = "".join(chr(b) if 32 <= b <= 126 else "." for b in view)
+                if show_hex and hex_str:
+                    ascii_str = f" | {clean_str}"
+                else:
+                    if truncated:
+                        clean_str += f" ... ({len(self.data)} bytes total)"
+                    ascii_str = clean_str
 
-        if color:
-            dir_str = "\033[32m[IN ]\033[0m" if self.direction == "IN" else "\033[36m[OUT]\033[0m"
-            time_part = f"\033[90m[{self.time_str}]\033[0m"
-            len_part = f"\033[33m({len(self.data)}B)\033[0m"
-            return f"{time_part} {dir_str}{tag_part} {len_part} {hex_str}{ascii_repr}"
-        else:
-            dir_str = f"[{self.direction}]"
-            return f"[{self.time_str}] {dir_str}{tag_part} ({len(self.data)}B) {hex_str}"
+        # Assemble final line
+        body = f"{hex_str}{ascii_str}".strip()
+        if body:
+            return f"{prefix} {body}"
+        return prefix
 
     def __repr__(self) -> str:
         return self.hexdump()
@@ -66,12 +113,51 @@ class IoLogger:
     """
     In-memory linear log storage for TX/RX frames.
     Preserves all logs without dropping, with zero hot-path formatting cost.
+    Supports customizable display formatting (hex, ascii, timestamp, length, truncation).
     """
 
-    def __init__(self, trace: bool = False) -> None:
+    def __init__(
+        self,
+        trace: bool = False,
+        show_hex: bool = True,
+        show_ascii: bool = True,
+        show_time: bool = True,
+        show_len: bool = True,
+        max_bytes: int = 64,
+    ) -> None:
         self._entries: list[LogEntry] = []
         self.trace = trace
+        self.show_hex = show_hex
+        self.show_ascii = show_ascii
+        self.show_time = show_time
+        self.show_len = show_len
+        self.max_bytes = max_bytes
         self._listeners: list[Callable[[LogEntry], None]] = []
+
+    def configure(
+        self,
+        *,
+        trace: bool | None = None,
+        show_hex: bool | None = None,
+        show_ascii: bool | None = None,
+        show_time: bool | None = None,
+        show_len: bool | None = None,
+        max_bytes: int | None = None,
+    ) -> IoLogger:
+        """Batch configure logger formatting and trace options."""
+        if trace is not None:
+            self.trace = trace
+        if show_hex is not None:
+            self.show_hex = show_hex
+        if show_ascii is not None:
+            self.show_ascii = show_ascii
+        if show_time is not None:
+            self.show_time = show_time
+        if show_len is not None:
+            self.show_len = show_len
+        if max_bytes is not None:
+            self.max_bytes = max_bytes
+        return self
 
     def add_listener(self, callback: Callable[[LogEntry], None]) -> None:
         """Register a callback for new LogEntry events."""
@@ -86,7 +172,15 @@ class IoLogger:
     def _emit(self, entry: LogEntry) -> None:
         self._entries.append(entry)
         if self.trace:
-            print(entry.format_line(color=sys.stdout.isatty()), flush=True)
+            line = entry.format_line(
+                color=sys.stdout.isatty(),
+                max_bytes=self.max_bytes,
+                show_hex=self.show_hex,
+                show_ascii=self.show_ascii,
+                show_time=self.show_time,
+                show_len=self.show_len,
+            )
+            print(line, flush=True)
         for listener in self._listeners:
             try:
                 listener(entry)
@@ -101,6 +195,20 @@ class IoLogger:
         if data:
             self._emit(LogEntry(timestamp=time.time(), direction="OUT", data=data, tag=tag, meta=meta or {}))
 
+    def log_event(self, tag: str, message: str, meta: dict[str, Any] | None = None) -> None:
+        """Record an arbitrary lifecycle/diagnostic event into log queue (e.g. DELAY, INFO, SYSTEM)."""
+        msg_str = str(message)
+        if msg_str:
+            self._emit(
+                LogEntry(
+                    timestamp=time.time(),
+                    direction="EVT",
+                    data=msg_str.encode("utf-8"),
+                    tag=tag,
+                    meta=meta or {},
+                )
+            )
+
     def history(self, limit: int = 100) -> list[LogEntry]:
         """Return the most recent log entries up to `limit`."""
         if limit <= 0:
@@ -109,12 +217,36 @@ class IoLogger:
 
     get_entries = history
 
-    def dump(self, limit: int = 20, color: bool = False) -> str:
+    def dump(
+        self,
+        limit: int = 20,
+        color: bool = False,
+        show_hex: bool | None = None,
+        show_ascii: bool | None = None,
+        show_time: bool | None = None,
+        show_len: bool | None = None,
+        max_bytes: int | None = None,
+    ) -> str:
         """Format and return the last `limit` log entries as a multi-line string."""
         entries = self.history(limit)
         if not entries:
             return "(No log entries recorded)"
-        return "\n".join(e.format_line(color=color) for e in entries)
+        h = self.show_hex if show_hex is None else show_hex
+        a = self.show_ascii if show_ascii is None else show_ascii
+        t = self.show_time if show_time is None else show_time
+        l = self.show_len if show_len is None else show_len
+        mb = self.max_bytes if max_bytes is None else max_bytes
+        return "\n".join(
+            e.format_line(
+                color=color,
+                max_bytes=mb,
+                show_hex=h,
+                show_ascii=a,
+                show_time=t,
+                show_len=l,
+            )
+            for e in entries
+        )
 
     def clear(self) -> None:
         self._entries.clear()

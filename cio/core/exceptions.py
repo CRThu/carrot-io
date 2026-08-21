@@ -83,3 +83,8 @@ class FrameChecksumError(IOOperationError):
 class InvalidUrlError(TransportError, ValueError):
     """Raised when a URL scheme or format is invalid."""
     pass
+
+
+class DeviceConfigError(TransportError):
+    """Raised when a required device configuration or environment variable is missing."""
+    pass

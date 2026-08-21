@@ -48,7 +48,33 @@
 ### 2. `cio.scan(kind: str | None = None) -> list[dict]`
 静默探测系统当前可用的物理硬件与串口设备，无可用设备时静默返回空列表。
 
-### 3. 快捷构造函数
+### 3. 极简 DSL 单例与环境变量注入 (`from cio import dev`)
+
+为支持极简测试脚本与领域特定语言（DSL）调用，`cio` 提供开箱即用的模块级惰性单例 `dev` 与本级目录 `.env` 环境变量注入：
+
+```bash
+# 当前工作目录下的 .env
+CIO_DEVICE="i2c+serial://COM3?baud=2000000&reg_len=2"
+CIO_DEVICE_POWER="serial://COM4?baud=9600"
+```
+
+```python
+# 01_ee_clear.py —— 无需 with，无需显式 connect，开箱即用
+from cio import dev
+
+# 1. 默认设备操作 (读取 CIO_DEVICE)
+dev.write_reg(0x57, 0xFFB6, 0xFF)
+data = dev.read_reg(0x57, 0xFFB0, 1)
+
+# 2. 具名多设备下标访问 (读取 CIO_DEVICE_POWER)
+dev["power"].write("VSET 3.3\n")
+```
+
+> **安全与生命周期保障：**
+> - **惰性连接**：`from cio import dev` 在导入阶段零副作用，只有首次调用方法时才建立硬件连接。
+> - **`atexit` 自动安全回收**：脚本正常结束或异常崩溃退出时，底层自动安全关闭串口与物理连接，彻底杜绝操作系统端口死锁。
+
+### 4. 快捷构造函数
 - `cio.serial(port="COM1", baud=115200, **kwargs)`
 - `cio.tcp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
@@ -130,8 +156,31 @@ asyncio.run(main())
 | `query()` | `dev.query(cmd: BytesLike, delay=0.0, timeout=None) -> bytes` | 发送命令、等待 `delay` 秒后回读响应 |
 | `flush()` | `dev.flush()` | 清空内部接收缓冲区 |
 | `history()` | `dev.history(limit=100) -> list[LogEntry]` | 获取内存中的历史收发日志条目 |
-| `dump_history()` | `dev.dump_history(limit=20, color=False) -> str` | 获取格式化后的 TX/RX 通信 Hex 文本流 |
+| `dump_history()` | `dev.dump_history(limit=20, color=False, ...) -> str` | 获取格式化后的 TX/RX 通信 Hex 文本流 |
 | `bind()` | `dev.bind(codec: BaseCodec) -> ProtocolTransport` | 绑定编解码器生成强类型协议对象 |
+
+#### 通信日志格式化与展示配置 (`dev.logger`)
+
+`dev.logger` 提供了对控制台实时 Trace 与历史 Dump 格式的细粒度控制：
+
+```python
+# 1. 属性直读直写
+dev.logger.show_hex = False     # 隐藏十六进制原始字节流
+dev.logger.show_ascii = False   # 隐藏 ASCII 文本预览
+dev.logger.show_time = False    # 隐藏时间戳前缀 [HH:MM:SS.mmm]
+dev.logger.show_len = False     # 隐藏字节长度 (XX B)
+dev.logger.max_bytes = 32       # 限制单条最大展示字节数（超长自动截断）
+
+# 2. 批量设置
+dev.logger.configure(show_hex=False, show_len=False, max_bytes=16)
+
+# 3. 记录自定义诊断/控制事件
+dev.logger.log_event("DELAY", "50ms")               # 输出 [EVT] [DELAY ] 50ms
+dev.logger.log_event("STATE", "Power rail ON")      # 输出 [EVT] [STATE ] Power rail ON
+
+# 4. 临时覆盖 dump 格式
+print(dev.dump_history(limit=10, show_hex=False, show_len=False))
+```
 
 ---
 
@@ -257,8 +306,12 @@ v = Verifier(
 | `transfer()` | `v.transfer(tx_data, expected=None, mask=None, name=None)` | 同步执行 SPI 全双工传输并校验回显数据 |
 | `read()` | `v.read(nbytes=-1, expected=None, mask=None, name=None)` | 读取流式数据并校验 |
 | `write()` | `v.write(data, name=None)` | 写入流式数据 |
+| `sleep()` | `v.sleep(seconds)` | 延迟等待，自动将 `[DELAY ]` 延时事件记录到绑定的 `logger` |
 | `check()` | `v.check(name, expected, actual, mask=None) -> bool` | 通用数据断言（支持 `int`, `bytes`, `list[int]`, 带掩码 `mask`） |
 | `summary()` | `v.summary() -> bool` | 打印汇总记分板（Total, Passed, Failed, Duration），全部通过返回 `True` |
+
+> 💡 **Verifier 与 Logger 联动**：
+> `Verifier(dev)` 默认自动绑定 `dev.logger`，延时与断言输出自动共享该 logger 的对齐、时间戳与格式化规则。也可以显式传入 `Verifier(logger=custom_logger)` 或注入自定义输出打印器 `Verifier(logger=my_print_fn)` 轻松重定向至 GUI/文件/Web 端。
 
 ---
 
