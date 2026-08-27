@@ -100,19 +100,18 @@ with cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2&trace=on") as dev:
     print("CP_CTRL readback:", data.hex())
 ```
 
-### 2. 自动化断言验证范式（结合 `Verifier`，推荐中测/量产使用）
-结合 [cio.testing.Verifier](file:///d:/Projects/carrot-io/API.md#四硬件测试与断言框架-ciotestingverifier) 使用，提供结构化分步测试、期望值断言对比、现场 Hex Dump 与自动化记分板统计：
+### 2. 自动化断言验证范式（结合 `check` / `require` / `verify`）
+结合 [cio.check / cio.require](file:///d:/Projects/carrot-io/API.md#四硬件测试与断言框架-ciotestingverify) 使用，提供结构化期望值断言对比、位掩码过滤、现场 Hex Diff 与自动化记分板统计：
 
 ```python
-import cio
-from cio.testing import Verifier
+from cio import dev, check, require, verify
 
-with cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2&trace=on") as dev:
-    v = Verifier(dev, continue_on_fail=True)
-    v.step("Read Status")
-    v.read_reg(0x57, 0xFFB1, expected=0x07, name="STATUS_REG")
-    v.write_reg(0x57, 0xFFB4, 0x03, check=True, name="REG_FFB4")
-    v.summary()
+with dev:
+    verify.reset()
+    check(dev.read_reg(0x57, 0xFFB1, 1), 0x07, name="STATUS_REG")
+    dev.write_reg(0x57, 0xFFB4, 0x03)
+    check(dev.read_reg(0x57, 0xFFB4, 1), 0x03, name="REG_FFB4")
+    verify.summary()
 ```
 
 ### 3. 原生 Asyncio 异步协程范式（高并发服务/网络网关）
@@ -279,39 +278,44 @@ async with cio.connect("udp://192.168.1.100:5025") as dev:
 
 ---
 
-## 四、硬件测试与断言框架 (`cio.testing.Verifier`)
+## 四、硬件断言与验证子系统 (`check` / `require` / `verify`)
 
-`Verifier` 是专为硬件寄存器与总线测试设计的同步断言验证器，支持执行测试分步、掩码断言、自动重试、通信历史 Trace 现场 Dump 及记分板统计。
+专为硬件寄存器与通信协议测试设计的轻量级断言与计分体系，支持数据归一化（bytes/int/hex str）、硬件位掩码过滤、对齐彩色 Hex Diff 渲染与记分板统计。
 
-### 1. 构造函数
+### 1. 核心断言接口
+
+| 方法签名 | 说明 | 示例 |
+|---|---|---|
+| `check(actual, expected, name="", mask=None)` | 软断言（比对失败记录到计分板，不中断流程） | `check(data, "55 AA", name="POR Data")` |
+| `require(actual, expected, name="", mask=None)` | 硬断言（关键条件失败立即抛出 `AssertionError`） | `require(dev.read_reg(0x57, 0x00), 0x10)` |
+| `check.mask(actual, expected, mask, name="")` | 显式位掩码比对 | `check.mask(reg, 0x10, mask=0x10, name="Bit4")` |
+| `require.len(data, expected_len: int, name="")` | 长度断言（通过返回原数据） | `require.len(res, 64, name="Payload Len")` |
+| `require.not_none(val, name="")` | 非空断言（通过返回原值） | `card = require.not_none(reader.active())` |
+| `check.is_none(val, name="")` | 空值断言 | `check.is_none(err_val, name="No Error")` |
+| `require.raises(exc_type, fn, *args, **kwargs)` | 异常捕获断言 | `require.raises(TimeoutError, dev.read)` |
+| `verify.summary() -> bool` | 输出格式化汇总记分板 | `sys.exit(0 if verify.summary() else 1)` |
+
+### 2. 多场景使用范式
+
+#### 范式 A：单脚本扁平直跑（默认隐式单例）
 ```python
-from cio.testing import Verifier
+from cio import dev, check, require, verify
 
-v = Verifier(
-    dev=dev,                     # 绑定的硬件设备对象 (同步或异步均可)
-    continue_on_fail=True,       # 遇到单项检查失败是否继续向下执行（默认 True）
-    auto_dump_on_fail=False,     # 失败时是否自动打印最近 10 条通信原始 Hex Trace
-    print_pass=True,             # 是否打印 PASS 行日志
-)
+with dev:
+    check(dev.read_reg(0x57, 0xFFB0, 1), 0x10, name="POR Status")
+    check(dev.read_reg(0x57, 0x03F0, 16)[14:16], "C8 37", name="Mode Word")
+    verify.summary()
 ```
 
-### 2. 核心测试方法全集
+#### 范式 B：Pytest 单元测试（局部会话隔离）
+```python
+from cio import dev, check, VerificationSession
 
-| 方法 | 签名 | 说明 |
-|---|---|---|
-| `step(title)` | `v.step("Step Name")` | 打印醒目的分步标题分割线（支持终端彩色） |
-| `sleep(seconds)` | `v.sleep(0.5)` | 延时等待，若 `trace=on` 会在控制台输出带有精确毫秒数的 `[DELAY]` 记录 |
-| `read_reg()` | `v.read_reg(addr, reg, nbytes=1, expected=None, mask=None, name=None)` | 同步读取 I2C 寄存器，若提供 `expected` 则自动断言 |
-| `write_reg()` | `v.write_reg(addr, reg, data, check=False, expected=None, mask=None, name=None)` | 同步写 I2C 寄存器；`check=True` 时自动回读校验 |
-| `transfer()` | `v.transfer(tx_data, expected=None, mask=None, name=None)` | 同步执行 SPI 全双工传输并校验回显数据 |
-| `read()` | `v.read(nbytes=-1, expected=None, mask=None, name=None)` | 读取流式数据并校验 |
-| `write()` | `v.write(data, name=None)` | 写入流式数据 |
-| `sleep()` | `v.sleep(seconds)` | 延迟等待，自动将 `[DELAY ]` 延时事件记录到绑定的 `logger` |
-| `check()` | `v.check(name, expected, actual, mask=None) -> bool` | 通用数据断言（支持 `int`, `bytes`, `list[int]`, 带掩码 `mask`） |
-| `summary()` | `v.summary() -> bool` | 打印汇总记分板（Total, Passed, Failed, Duration），全部通过返回 `True` |
-
-> 💡 **Verifier 与 Logger 联动**：
-> `Verifier(dev)` 默认自动绑定 `dev.logger`，延时与断言输出自动共享该 logger 的对齐、时间戳与格式化规则。也可以显式传入 `Verifier(logger=custom_logger)` 或注入自定义输出打印器 `Verifier(logger=my_print_fn)` 轻松重定向至 GUI/文件/Web 端。
+def test_eeprom_clear():
+    with dev, VerificationSession() as s:
+        check(dev.read_reg(0x57, 0x0020, 16), "00" * 16, name="Page 2 Cleared")
+        assert s.summary()
+```
 
 ---
 
@@ -411,35 +415,34 @@ TransportError (基类)
 
 ## 八、即拷即用标准代码模板 (Recipes)
 
-### 模板 1：I2C 芯片寄存器自动化验证 (同步 Verifier 范式)
+### 模板 1：I2C 芯片寄存器自动化验证 (同步 check / verify 范式)
 ```python
 from __future__ import annotations
 import sys
-import cio
-from cio.testing import Verifier
+import time
+from cio import dev, check, require, verify
 
-PORT = "COM3"
-BAUDRATE = 2000000
 I2C_ADDR = 0x57
 
 def verify_chip() -> bool:
-    with cio.connect(f"i2c+serial://{PORT}?baud={BAUDRATE}&reg_len=2&trace=on") as dev:
-        v = Verifier(dev, continue_on_fail=True)
+    with dev:
+        verify.reset()
 
-        v.step("Read Status Registers")
-        v.read_reg(I2C_ADDR, 0xFFB1, expected=0x07, name="STATUS_REG")
-        v.read_reg(I2C_ADDR, 0xFFB0, expected=0x10, name="STATUS")
+        # 1. 状态寄存器校验
+        check(dev.read_reg(I2C_ADDR, 0xFFB1, 1), 0x07, name="STATUS_REG")
+        check(dev.read_reg(I2C_ADDR, 0xFFB0, 1), 0x10, name="STATUS")
 
-        v.step("Write & Verify Register")
-        v.write_reg(I2C_ADDR, 0xFFB4, 0x03, check=True, name="REG_FFB4")
+        # 2. 寄存器写入与回读校验
+        dev.write_reg(I2C_ADDR, 0xFFB4, 0x03)
+        check(dev.read_reg(I2C_ADDR, 0xFFB4, 1), 0x03, name="REG_FFB4")
 
-        v.step("EEPROM Page Write & Readback")
+        # 3. EEPROM 页写入与回读校验
         test_payload = [0x55] * 16
-        v.write_reg(I2C_ADDR, 0x0020, test_payload)
-        v.sleep(0.5)  # 等待 EEPROM 烧写
-        v.read_reg(I2C_ADDR, 0x0020, nbytes=16, expected=test_payload, name="EEPROM 0x0020")
+        dev.write_reg(I2C_ADDR, 0x0020, test_payload)
+        time.sleep(0.05)  # 等待 EEPROM 烧写
+        check(dev.read_reg(I2C_ADDR, 0x0020, 16), test_payload, name="EEPROM 0x0020")
 
-        return v.summary()
+        return verify.summary()
 
 if __name__ == "__main__":
     sys.exit(0 if verify_chip() else 1)

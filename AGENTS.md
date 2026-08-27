@@ -41,7 +41,7 @@
   - **`exceptions`**：分级异常体系（`DriverMissingError`, `ReadTimeoutError`, `IOOperationError` 等）。
 - **`cio.composite`**（协议桥层）：`carrotbridge`（极简 ASCII 管道）、`i2c` / `spi` / `gpio`（硬件协议桥）、`rpc`（跨机代理）。
 - **`cio.backends`**（延迟加载适配器）：`socket`, `serial`, `ftdi`, `visa`, `usb`。
-- **`cio.testing`**（测试组件）：`mock`（内存 Mock 设备）、`verifier`（断言验证器）。
+- **`cio.testing`**（测试组件）：`mock`（内存 Mock 设备）、`verify`（`check` / `require` / `verify` 纯粹断言子系统）。
 
 ---
 
@@ -51,7 +51,7 @@
    - 内部 100% 纯协程实现 (`async def`)，**严禁手写专属同步类**。
    - 外部同步统一通过 `dev.sync`（由 `SyncTransportWrapper` 驱动后台专用 Loop 线程调度）；`with dev:` 自动进入同步视图，`async with dev:` 保持原生异步。
 2. **纯净顶层命名空间与零内部符号泄露（Clean Public API & Zero Symbol Pollution）**：
-   - `cio/__init__.py` 与 `__all__` **仅暴露顶层核心公共入口**（工厂函数、总线基类、分级异常、`Verifier`、`BytesLike`、`ensure_bytes`）。
+   - `cio/__init__.py` 与 `__all__` **仅暴露顶层核心公共入口**（工厂函数、总线基类、分级异常、`check`、`require`、`verify`、`VerificationSession`、`CheckResult`、`BytesLike`、`ensure_bytes`）。
    - **严禁将内部转换工具（如 `format_arg`, `parse_*`, `to_hex_str`）泄露到顶层命名空间**。
    - **严禁在类中挂载冗余的 `staticmethod` 别名**，各模块直接从 `cio.core.converters` 显式导入所需函数。
 3. **瘦基类接口与零抽象泄露（Lean ABC & Zero Abstraction Leakage）**：

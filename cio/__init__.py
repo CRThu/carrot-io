@@ -48,7 +48,13 @@ from cio.core.env import dev
 from cio.core.factory import connect
 from cio.core.registry import registry
 from cio.testing.mock import MockTransport, MockGpioPin
-from cio.testing.verifier import Verifier
+from cio.testing.verify import (
+    CheckResult,
+    VerificationSession,
+    check,
+    require,
+    verify,
+)
 
 
 def scan(kind: str | None = None) -> list[dict]:
@@ -166,5 +172,9 @@ __all__ = [
     # Testing
     "MockTransport",
     "MockGpioPin",
-    "Verifier",
+    "CheckResult",
+    "VerificationSession",
+    "check",
+    "require",
+    "verify",
 ]
