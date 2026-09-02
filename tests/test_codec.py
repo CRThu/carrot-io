@@ -77,3 +77,10 @@ def test_struct_codec():
     msg, consumed = codec.decode(buf)
     assert msg == data
     assert consumed == 6
+
+    # Incomplete buffer
+    incomplete = bytearray(b"\x12\x34")
+    msg, consumed = codec.decode(incomplete)
+    assert msg is None
+    assert consumed == 0
+

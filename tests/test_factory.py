@@ -57,3 +57,14 @@ def test_factory_composite_rpc_proxy():
 def test_factory_invalid_url():
     with pytest.raises(InvalidUrlError):
         cio.connect("invalid_scheme_xyz://123")
+
+
+def test_top_level_factory_helpers():
+    ser = cio.serial(port="COM5", baud=9600)
+    assert ser.port == "COM5"
+    assert ser.baudrate == 9600
+
+    ft = cio.ftdi(url="ftdi://ftdi:232h/2", baud=57600)
+    assert ft.url == "ftdi://ftdi:232h/2"
+    assert ft.baudrate == 57600
+

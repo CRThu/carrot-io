@@ -91,9 +91,11 @@ def _format_hex_diff(
         exp_tokens = exp_str.split(" ")
         act_tokens = act_str.split(" ")
         diff_markers = []
-        for e, a in zip(exp_tokens, act_tokens):
+        diff_indices: list[tuple[int, str, str]] = []
+        for i, (e, a) in enumerate(zip(exp_tokens, act_tokens)):
             if e != a:
                 diff_markers.append("^^")
+                diff_indices.append((i, e, a))
             else:
                 diff_markers.append("  ")
         marker_line = " ".join(diff_markers)
@@ -104,7 +106,15 @@ def _format_hex_diff(
                 f"  Actual:   0x{act_str}\n"
                 f"  Diff:       {marker_line}"
             )
-        return f"[{tag}] {title}: Expected 0x{exp_str}, Got 0x{act_str}"
+        mismatches_summary = ", ".join(f"@{idx:02X}: exp 0x{e} != act 0x{a}" for idx, e, a in diff_indices[:8])
+        if len(diff_indices) > 8:
+            mismatches_summary += f", ... ({len(diff_indices)} mismatches total)"
+        return (
+            f"[{tag}] {title}\n"
+            f"  Expected ({len(exp_bytes)}B): 0x{exp_str}\n"
+            f"  Actual   ({len(act_bytes)}B): 0x{act_str}\n"
+            f"  Mismatches: {mismatches_summary}"
+        )
 
     return f"[{tag}] {title}: Expected {exp_str}, Got {act_str}"
 

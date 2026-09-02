@@ -154,3 +154,74 @@ def test_io_logger_log_delay_and_event():
     assert "[EVT] [DELAY ] 50ms" in dump_text
     assert "[EVT] [CUSTOM] State changed to READY" in dump_text
 
+
+def test_io_logger_ascii_protocol_formatting():
+    # Test CarrotBridge CMD & RETURN formatting (clean text without messy hex)
+    cmd_entry = LogEntry(
+        timestamp=1700000000.0,
+        direction="OUT",
+        data=b"IIC.SCAN()\n",
+        tag="CMD",
+    )
+    cmd_line = cmd_entry.format_line(color=False)
+    assert "[OUT] [CMD   ] (11B) IIC.SCAN()" in cmd_line
+    assert "49 49 43" not in cmd_line  # Hex suppressed for clean ASCII command
+
+    ret_entry = LogEntry(
+        timestamp=1700000000.01,
+        direction="IN",
+        data=b"[RETURN]: 0x46,0x4A,0x57\r\n",
+        tag="RETURN",
+    )
+    ret_line = ret_entry.format_line(color=False)
+    assert "[IN ] [RETURN] (26B) 0x46,0x4A,0x57" in ret_line
+    assert "\r" not in ret_line
+    assert "\n" not in ret_line
+
+
+def test_io_logger_crlf_stripping_and_clean_single_line():
+    entry = LogEntry(
+        timestamp=1700000000.0,
+        direction="EVT",
+        data=b"Line with\r\nCRLF and\rtrailing\r\n",
+        tag="CLEAN",
+    )
+    line = entry.format_line(color=False)
+    assert "\r" not in line
+    assert "\n" not in line
+    assert "Line with CRLF and trailing" in line
+
+
+def test_io_logger_color_and_msg_formatting():
+    # 1. Colored output for CMD, RETURN, MSG, EVT
+    cmd_entry = LogEntry(timestamp=1700000000.0, direction="OUT", data=b"CMD_TEST\n", tag="CMD")
+    ret_entry = LogEntry(timestamp=1700000000.0, direction="IN", data=b"[RETURN]: OK\n", tag="RETURN")
+    msg_entry = LogEntry(timestamp=1700000000.0, direction="IN", data=b"Sensor ready\n", tag="MSG")
+    evt_entry = LogEntry(timestamp=1700000000.0, direction="EVT", data=b"State OK", tag="EVT")
+
+    cmd_color = cmd_entry.format_line(color=True)
+    ret_color = ret_entry.format_line(color=True)
+    msg_color = msg_entry.format_line(color=True)
+    evt_color = evt_entry.format_line(color=True)
+
+    assert "\033[96m" in cmd_color
+    assert "\033[92m" in ret_color
+    assert "\033[90m" in msg_color
+    assert "\033[33m[EVT]\033[0m" in evt_color
+
+    # 2. Non-utf8 binary data with CMD tag falls back gracefully to hex
+    binary_cmd = LogEntry(timestamp=1700000000.0, direction="OUT", data=b"\xFF\xFE\xFD", tag="CMD")
+    bin_line = binary_cmd.format_line(color=False)
+    assert "FF FE FD" in bin_line
+
+    # 3. Clear and repr
+    logger = IoLogger()
+    logger.log_out(b"123")
+    assert len(logger) == 1
+    assert repr(logger.history()[0]).startswith("[")
+    logger.clear()
+    assert len(logger) == 0
+    assert logger.dump() == "(No log entries recorded)"
+
+
+

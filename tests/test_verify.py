@@ -222,3 +222,51 @@ def test_verify_facade():
         assert verify.is_none(None) is True
         assert s.total_count == 6
         assert verify.summary() is True
+
+
+def test_verify_long_bytes_diff_mismatch():
+    exp = [0x55] * 32
+    act = [0x55] * 32
+    act[2] = 0xAA
+    act[18] = 0x00
+
+    results = []
+    with VerificationSession(print_pass=False, print_fail=False) as s:
+        s.add_sink(results.append)
+        check(act, exp, name="EEPROM 32B Check")
+
+    assert len(results) == 1
+    res = results[0]
+    assert res.passed is False
+    assert "@02: exp 0x55 != act 0xAA" in res.diff_line
+    assert "@12: exp 0x55 != act 0x00" in res.diff_line
+    assert "Mismatches" in res.diff_line
+
+
+def test_verify_diff_edge_cases():
+    # 1. Unequal byte lengths
+    results = []
+    with VerificationSession(print_pass=False, print_fail=False) as s:
+        s.add_sink(results.append)
+        check(b"\x01\x02", b"\x01\x02\x03\x04", name="Length Diff Check")
+    assert len(results) == 1
+    assert "Expected (4B)" in results[0].diff_line
+    assert "Actual   (2B)" in results[0].diff_line
+
+    # 2. More than 8 mismatches in long array
+    exp_all_00 = [0x00] * 32
+    act_all_ff = [0xFF] * 32
+    results.clear()
+    with VerificationSession(print_pass=False, print_fail=False) as s:
+        s.add_sink(results.append)
+        check(act_all_ff, exp_all_00, name="Many Mismatches Check")
+    assert "32 mismatches total" in results[0].diff_line
+
+    # 3. Non-bytes equality failure
+    results.clear()
+    with VerificationSession(print_pass=False, print_fail=False) as s:
+        s.add_sink(results.append)
+        check({"a": 1}, {"b": 2}, name="Dict Mismatch")
+    assert "Expected {'b': 2}, Got {'a': 1}" in results[0].diff_line
+
+

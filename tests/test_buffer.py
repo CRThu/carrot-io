@@ -54,6 +54,7 @@ def test_fifobuffer_overflow_backpressure():
 
 def test_packetqueue():
     queue = PacketQueue(max_packets=3)
+    assert queue.peek() is None
     queue.put(b"P1")
     queue.put(b"P2")
     assert len(queue) == 2
@@ -61,3 +62,26 @@ def test_packetqueue():
     assert queue.get() == b"P1"
     assert queue.get() == b"P2"
     assert queue.get() is None
+
+    # Clear and max_packets
+    queue.put(b"P3")
+    assert len(queue) == 1
+    queue.clear()
+    assert len(queue) == 0
+
+
+def test_fifobuffer_edge_cases():
+    buf = FifoBuffer(max_size=10)
+    buf.write(b"")  # no-op empty write
+    assert len(buf) == 0
+    assert buf.peek() == b""
+
+    buf.write(b"12345")
+    assert buf.peek(-1) == b"12345"
+    assert buf.peek(100) == b"12345"
+    assert buf.max_size == 10
+    assert buf.overflow_policy == OverflowPolicy.DROP_OLDEST
+
+    buf.clear()
+    assert len(buf) == 0
+

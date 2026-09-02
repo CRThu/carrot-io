@@ -112,14 +112,48 @@ async def test_gpio_bridge_full_coverage():
         assert pipe.tx_history[-1] == b"IO.PULL(A1, UP)\n"
         pipe.push_rx(b"[RETURN]: 0\n")
 
+        # config_mode int mapping
+        while len(pipe.tx_history) < 6:
+            await asyncio.sleep(0.005)
+        assert pipe.tx_history[-1] == b"IO.MODE(A1, OUT,PP)\n"
+        pipe.push_rx(b"[RETURN]: 0\n")
+
+        # config_pull int mapping
+        while len(pipe.tx_history) < 7:
+            await asyncio.sleep(0.005)
+        assert pipe.tx_history[-1] == b"IO.PULL(A1, UP)\n"
+        pipe.push_rx(b"[RETURN]: 0\n")
+
     t = asyncio.create_task(respond_gpio_ops())
     await gpio.set_high()
     await gpio.toggle()
     await gpio.config_mode("OUT,PP")
     await gpio.config_pull("UP")
+    await gpio.config_mode(1)
+    await gpio.config_pull(1)
     await t
 
+    # Edge detection tests
+    pipe.tx_history.clear()
+    pipe.auto_replies.clear()
+    pipe.add_auto_reply(b"IO.R(A1)\n", b"[RETURN]: 0\n")
+
+    async def simulate_pin_change():
+        await asyncio.sleep(0.02)
+        pipe.auto_replies.clear()
+        pipe.add_auto_reply(b"IO.R(A1)\n", b"[RETURN]: 1\n")
+
+    t_edge = asyncio.create_task(simulate_pin_change())
+    assert await gpio.wait_for_edge("rising", timeout=0.1) is True
+    await t_edge
+
+    # Edge timeout
+    pipe.auto_replies.clear()
+    pipe.add_auto_reply(b"IO.R(A1)\n", b"[RETURN]: 0\n")
+    assert await gpio.wait_for_edge("falling", timeout=0.03) is False
+
     await gpio.bridge.close()
+
 
 
 @pytest.mark.asyncio

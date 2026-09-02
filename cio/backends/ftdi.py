@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
+from cio.core.converters import BytesLike, ensure_bytes
 from cio.core.exceptions import ConnectionError, PythonPackageMissingError
 from cio.core.gpio import AsyncGpioPin
 from cio.core.i2c import AsyncI2cTransport
