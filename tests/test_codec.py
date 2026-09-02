@@ -84,3 +84,43 @@ def test_struct_codec():
     assert msg is None
     assert consumed == 0
 
+
+def test_framed_binary_codec_custom_callable_crc():
+    def custom_xor_crc(data: bytes) -> bytes:
+        val = 0
+        for b in data:
+            val ^= b
+        return bytes([val])
+
+    codec = FramedBinaryCodec(header=b"\xAA\x55", crc_type=custom_xor_crc, crc_size=1)
+    payload = b"HELLO_CUSTOM_CRC"
+    frame = codec.encode(payload)
+
+    msg, consumed = codec.decode(bytearray(frame))
+    assert msg == payload
+    assert consumed == len(frame)
+
+
+def test_framed_binary_codec_xor8_and_crc16():
+    # xor8
+    codec_xor = FramedBinaryCodec(header=b"\xAA\x55", crc_type="xor8")
+    payload = b"DATA_XOR"
+    frame = codec_xor.encode(payload)
+    msg, consumed = codec_xor.decode(bytearray(frame))
+    assert msg == payload
+    assert consumed == len(frame)
+
+    # crc16 & length_includes_header
+    codec_crc16 = FramedBinaryCodec(
+        header=b"\xAA\x55",
+        length_offset=2,
+        length_size=2,
+        length_includes_header=True,
+        crc_type="crc16",
+    )
+    frame16 = codec_crc16.encode(b"PAYLOAD_16")
+    msg16, consumed16 = codec_crc16.decode(bytearray(frame16))
+    assert msg16 == b"PAYLOAD_16"
+    assert consumed16 == len(frame16)
+
+

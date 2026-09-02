@@ -108,11 +108,19 @@ def _cleanup_all_devices() -> None:
     with _DEVICE_LOCK:
         for dev_inst in list(_ACTIVE_DEVICES.values()):
             try:
-                if hasattr(dev_inst, "close"):
-                    dev_inst.close()
+                if hasattr(dev_inst, "sync") and hasattr(dev_inst.sync, "close"):
+                    dev_inst.sync.close()
+                elif hasattr(dev_inst, "_sync_cleanup"):
+                    dev_inst._sync_cleanup()
+                elif hasattr(dev_inst, "close"):
+                    res = dev_inst.close()
+                    if inspect.isawaitable(res):
+                        # Close unawaited coroutine object safely
+                        res.close()
             except Exception:
                 pass
         _ACTIVE_DEVICES.clear()
+
 
 
 def close_all_devices() -> None:
@@ -127,10 +135,10 @@ def reset_devices() -> None:
     _DOTENV_LOADED = False
 
 
-def get_device(name: str = "default") -> Any:
+def get_device(name: str = "default", sync: bool = True) -> Any:
     """
     获取或惰性初始化具名设备单例。
-    对于同步使用场景，默认返回 .sync 包装器以支持直调总线方法。
+    sync=True 时返回 .sync 包装器以支持直调总线方法；sync=False 时返回底层原生异步实例。
     """
     global _CLEANUP_REGISTERED
     norm_key = (name or "default").strip().lower()
@@ -141,41 +149,60 @@ def get_device(name: str = "default") -> Any:
             _CLEANUP_REGISTERED = True
 
         if norm_key in _ACTIVE_DEVICES:
-            return _ACTIVE_DEVICES[norm_key]
+            transport = _ACTIVE_DEVICES[norm_key]
+        else:
+            url = resolve_device_url(norm_key)
+            transport = connect(url)
+            _ACTIVE_DEVICES[norm_key] = transport
 
-        url = resolve_device_url(norm_key)
-        transport = connect(url)
-        # 默认提供同步视图包装，以实现无 with 直调的总线体验
-        sync_dev = transport.sync if hasattr(transport, "sync") else transport
-        _ACTIVE_DEVICES[norm_key] = sync_dev
-        return sync_dev
+        if sync and hasattr(transport, "sync"):
+            return transport.sync
+        return transport
 
 
 class _LazyDeviceProxy:
     """
     全能惰性设备代理门面：
-    - dev.read(...) / dev.write_reg(...) -> 自动转发给默认设备 (CIO_DEVICE)
-    - dev["power"].write(...) -> 自动转发给具名设备 (CIO_DEVICE_POWER)
-    - with dev: -> 兼容标准上下文管理器
+    - dev.read(...) / dev.write_reg(...) -> 自动以同步方式转发给默认设备 (CIO_DEVICE)
+    - with dev: -> 同步上下文管理器
+    - async with dev: -> 原生协程异步上下文管理器
+    - dev["power"].write(...) -> 转发给具名设备 (CIO_DEVICE_POWER)
     """
 
+    @property
+    def raw(self) -> Any:
+        """获取底层原生异步设备实例。"""
+        return get_device("default", sync=False)
+
     def __getattr__(self, name: str) -> Any:
-        target = get_device("default")
+        target = get_device("default", sync=True)
         return getattr(target, name)
 
     def __getitem__(self, name: str) -> Any:
-        return get_device(name)
+        return get_device(name, sync=True)
 
     def __enter__(self) -> Any:
-        target = get_device("default")
+        target = get_device("default", sync=True)
         if hasattr(target, "__enter__"):
             return target.__enter__()
         return target
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
-        target = get_device("default")
+        target = get_device("default", sync=True)
         if hasattr(target, "__exit__"):
             return target.__exit__(exc_type, exc_val, exc_tb)
+        return None
+
+    async def __aenter__(self) -> Any:
+        target = get_device("default", sync=False)
+        if hasattr(target, "__aenter__"):
+            return await target.__aenter__()
+        return target
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        target = get_device("default", sync=False)
+        if hasattr(target, "__aexit__"):
+            return await target.__aexit__(exc_type, exc_val, exc_tb)
         return None
 
     def __repr__(self) -> str:
@@ -187,3 +214,4 @@ class _LazyDeviceProxy:
 
 # 顶层唯一单例入口
 dev = _LazyDeviceProxy()
+

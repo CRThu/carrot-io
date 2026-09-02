@@ -57,15 +57,10 @@ class AsyncSpiBridge(AsyncSpiTransport):
         self._is_open = False
         await self._bridge.close()
 
-    async def _write_impl(self, data: bytes) -> int:
-        return await self._bridge.write(data)
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        return await self._bridge.read(nbytes)
-
     async def write(self, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
+
 
         raw_data = ensure_bytes(data)
         if self.cs_pin:

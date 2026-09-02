@@ -14,15 +14,16 @@
  1. 顶层入口:    cio.connect() / cio.scan() / cio.tcp() / cio.serial() / cio.Verifier
  2. 协议桥层:    AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
  3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
- 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Visa* / Usb*
- 5. 底层硬件驱动: asyncio Socket / PySerial / PyFTDI / C DLLs (visa32, libusb)
+ 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / VisaTransport
+ 5. 底层硬件驱动: asyncio Socket / PySerial / PyFTDI / C DLLs (visa32)
 ```
 
 ### 类继承拓扑
-- **`AsyncBaseTransport`**（抽象基类：并发锁、`sync` 统一同步适配、`trace` 日志、`query`、析构）
-  - **`AsyncStreamTransport`** (关联 `FifoBuffer`) $\rightarrow$ `AsyncUartTransport` (`SerialTransport`, `FtdiUartTransport`), `TcpTransport`, `RpcRemoteTransport`, `MockTransport`
-  - **`AsyncPacketTransport`** (关联 `PacketQueue`) $\rightarrow$ `UdpTransport`, `UsbTransport`
+- **`AsyncBaseTransport`**（抽象基类：`sync` 统一同步适配、`logger` 内存日志、`history`、析构）
+  - **`AsyncStreamTransport`** (关联 `FifoBuffer`, `write`/`read`/`query`/`read_exact`/`read_until`) $\rightarrow$ `AsyncUartTransport` (`SerialTransport`, `FtdiUartTransport`), `TcpTransport`, `RpcRemoteTransport`, `VisaTransport`, `MockTransport`
+  - **`AsyncPacketTransport`** (关联 `PacketQueue`, `write`/`read`/`query`) $\rightarrow$ `UdpTransport`
   - **`AsyncI2cTransport`** $\rightarrow$ `AsyncI2cBridge`, `FtdiI2cTransport`
+
   - **`AsyncSpiTransport`** $\rightarrow$ `AsyncSpiBridge`, `FtdiSpiTransport`
 - **`AsyncGpioPin`**（抽象 GPIO 引脚接口）$\rightarrow$ `AsyncGpioBridge`, `FtdiGpioPin`, `MockGpioPin`
 
@@ -40,8 +41,9 @@
   - **`factory` / `registry`**：URL Scheme 解析分发与静默探测设备扫描。
   - **`exceptions`**：分级异常体系（`DriverMissingError`, `ReadTimeoutError`, `IOOperationError` 等）。
 - **`cio.composite`**（协议桥层）：`carrotbridge`（极简 ASCII 管道）、`i2c` / `spi` / `gpio`（硬件协议桥）、`rpc`（跨机代理）。
-- **`cio.backends`**（延迟加载适配器）：`socket`, `serial`, `ftdi`, `visa`, `usb`。
+- **`cio.backends`**（延迟加载适配器）：`socket`, `serial`, `ftdi`, `visa`。
 - **`cio.testing`**（测试组件）：`mock`（内存 Mock 设备）、`verify`（`check` / `require` / `verify` 纯粹断言子系统）。
+
 
 ---
 

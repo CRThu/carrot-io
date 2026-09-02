@@ -267,14 +267,16 @@ is_triggered = await pin.wait_for_edge(edge="rising", timeout=2.0)       # 等�
 
 ### 6. 有界报文传输 (`AsyncPacketTransport`)
 
-针对 UDP Datagram 及 USB Endpoint 等有界消息包传输：
+针对 UDP Datagram 等有界消息包传输：
 
 ```python
 async with cio.connect("udp://192.168.1.100:5025") as dev:
-    await dev.write_packet(b"PING")
-    packet = await dev.read_packet()
+    await dev.write(b"PING")
+    packet = await dev.read()
     print("Received Packet:", packet)
 ```
+
+
 
 ---
 
@@ -321,37 +323,80 @@ def test_eeprom_clear():
 
 ## 五、消息编解码与高层协议 (`cio.core.codec` / `dev.bind`)
 
-将底层字节流自动封装为强类型消息通道：
+通过将任意底层的字节流 Transport 绑定（`dev.bind(codec)`）为强类型 **`ProtocolTransport`**，将底层散装字节收发自动升级为结构化业务对象通道：
+
+### 1. 内置 4 大编解码器 (Built-in Codecs)
 
 ```python
 from cio.core.codec import LineCodec, FixedLengthCodec, FramedBinaryCodec, StructCodec
 
-# 1. 文本行协议 (SCPI / NMEA)
+# ① 文本行协议 (SCPI 仪器 / NMEA GPS / 文本交互)
 proto = dev.bind(LineCodec(delimiter=b"\n", encoding="utf-8"))
-await proto.write("*IDN?")
-resp_str = await proto.read()  # 返回 str，自动剔除 \n
+resp = await proto.query("*IDN?")  # 自动追加 \n 发送并解析返回字符串
+print("仪器型号:", resp)
 
-# 2. 定长二进制帧
+# ② 定长二进制帧 (固定 N 字节传感器原始报文)
 proto = dev.bind(FixedLengthCodec(length=32))
-frame = await proto.read()     # 每次精确返回 32 字节 bytes
+frame = await proto.read()  # 每次精确出队 32 字节完整 bytes
 
-# 3. 经典带头带长校验帧: [HEADER 0xAA55][LEN (2B)][PAYLOAD][CRC16]
+# ③ 经典带头带长工业校验帧: [HEADER 0xAA55][LEN (2B)][PAYLOAD][CRC16]
 codec = FramedBinaryCodec(
     header=b"\xAA\x55",
     length_offset=2,
     length_size=2,
     byteorder="big",
-    crc_type="crc16",
+    length_includes_header=False,
+    crc_type="crc16",  # 支持 "sum8", "xor8", "crc16", 或自定义 Callable 函数
+    crc_size=2,
 )
 proto = dev.bind(codec)
-await proto.write(b"\x01\x02\x03")  # 自动计算长度与 CRC 发送
-payload = await proto.read()         # 自动校验 CRC、解包载荷并丢弃前导噪波
+await proto.write(b"\x01\x02\x03")  # 自动组装 [AA 55][00 03][01 02 03][CRC]
+payload = await proto.read()         # 自动寻头、校验 CRC、丢弃噪波并返回纯净载荷
 
-# 4. Python Struct 结构体
+# ④ Python Struct 结构体对象 (自动打包/解包元组)
 proto = dev.bind(StructCodec(fmt=">HHLL"))
 await proto.write((1, 2, 1000, 2000))
-data_tuple = await proto.read()
+data_tuple = await proto.read()     # 直接得到解包后的元组 (1, 2, 1000, 2000)
 ```
+
+### 2. `ProtocolTransport` 方法与生命周期契约
+
+| 方法签名 | 说明 | 示例 |
+|---|---|---|
+| `await proto.write(message, timeout=None) -> int` | 将结构化对象编码为 bytes 并发送 | `await proto.write("MEAS:VOLT?")` |
+| `await proto.read(timeout=None) -> Any` | 从底层缓冲接收并解码返回单个业务对象 | `data = await proto.read()` |
+| `await proto.query(message, delay=0.0, timeout=None) -> Any` | 发送业务对象并在延时后读取解析响应 | `res = await proto.query("*IDN?")` |
+| `await proto.flush() -> None` | 清空编解码残余缓冲区与底层流 | `await proto.flush()` |
+| `proto.dump_history(limit=20, ...) -> str` | 渲染最近的原始帧通信历史 | `print(proto.dump_history(limit=5))` |
+| `with proto as p:` | 同步上下文管理器（非 async 代码阻塞调用） | `p.write("PING"); msg = p.read()` |
+| `async with proto as p:` | 异步原生上下文管理器 | `async with proto as p: ...` |
+
+### 3. 自定义私有协议 Codec 扩展模板
+
+只需继承 `BaseCodec` 实现 `encode` 和 `decode` 两个纯函数方法：
+
+```python
+from cio.core.codec import BaseCodec
+
+class CustomTLVCodec(BaseCodec):
+    """自定义 TLV 协议: [TAG 1B][LEN 1B][VALUE]"""
+    
+    def encode(self, message: tuple[int, bytes]) -> bytes:
+        tag, val = message
+        return bytes([tag, len(val)]) + val
+
+    def decode(self, buffer: bytearray) -> tuple[tuple[int, bytes] | None, int]:
+        if len(buffer) < 2:
+            return None, 0  # 字节不足，返回 (None, 0) 等待后续数据
+        tag = buffer[0]
+        length = buffer[1]
+        total_len = 2 + length
+        if len(buffer) < total_len:
+            return None, 0
+        value = bytes(buffer[2:total_len])
+        return (tag, value), total_len  # 成功解析并消费 total_len 字节
+```
+
 
 ---
 
@@ -388,9 +433,10 @@ with cio.connect(url) as dev:
 ## 七、数据类型与异常体系
 
 ### 1. 数据类型归一化 (`BytesLike`)
-所有写入入参均声明为 `BytesLike = bytes | bytearray | int | list[int]`，内部通过 `cio.ensure_bytes()` 统一归一化：
+所有写入入参均声明为 `BytesLike = bytes | bytearray | int | list[int] | tuple[int, ...]，内部通过 `cio.ensure_bytes()` 统一归一化：
 - `dev.write(b"\x01\x02")`
 - `dev.write([0x01, 0x02, 0x03])`
+- `dev.write((0x01, 0x02))`
 - `dev.write(0xFF)` （自动识别为 `b"\xFF"`）
 
 ### 2. 异常继承树 (`cio.core.exceptions`)
@@ -398,7 +444,7 @@ with cio.connect(url) as dev:
 TransportError (基类)
  ├── DriverMissingError (驱动或物理依赖缺失)
  │    ├── PythonPackageMissingError (缺少 pyserial / pyftdi 等 pip 包)
- │    └── CDllMissingError (缺少 visa32.dll / libusb 等 C 动态链接库)
+ │    └── CDllMissingError (缺少 visa32.dll 等 C 动态链接库)
  ├── ConnectionError (连接建立失败)
  │    ├── ConnectTimeoutError (连接超时)
  │    └── ConnectionRefusedError (连接被拒绝)
@@ -410,6 +456,7 @@ TransportError (基类)
  │    └── FrameChecksumError (帧校验 CRC/CheckSum 错误)
  └── InvalidUrlError (URL Scheme 或参数格式错误)
 ```
+
 
 ---
 

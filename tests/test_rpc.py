@@ -57,3 +57,24 @@ async def test_rpc_server_error_handling():
     await client.close()
 
     await rpc_server.stop()
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_sync_client():
+    rpc_server = await start_rpc_server("127.0.0.1", 0)
+    rpc_host, rpc_port = rpc_server._server.sockets[0].getsockname()
+
+    def sync_client_run():
+        url = f"rpc+mock://{rpc_host}:{rpc_port}"
+        with cio.connect(url).sync as client:
+            assert client.is_open
+            written = client.write(b"SYNC RPC PING\n")
+            assert written == 14
+
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, sync_client_run)
+    finally:
+        await rpc_server.stop()
+
+

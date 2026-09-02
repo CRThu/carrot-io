@@ -31,6 +31,15 @@ async def test_protocol_transport_async():
     await proto.flush()
     assert proto.history() is not None
 
+    # query method
+    pipe.add_auto_reply(b"*IDN?\n", b"CARROT_TEST_DEV\n")
+    query_res = await proto.query("*IDN?")
+    assert query_res == "CARROT_TEST_DEV"
+
+    # dump_history
+    dump_text = proto.dump_history(limit=5)
+    assert "OUT" in dump_text
+
     # async context manager
     async with proto as p:
         assert p.is_open
@@ -49,6 +58,10 @@ def test_protocol_transport_sync():
         p.write("PING")
         msg = p.read()
         assert msg == "PONG"
+        
+        # sync query
+        pipe.add_auto_reply(b"STATUS?\n", b"READY\n")
+        assert p.query("STATUS?") == "READY"
 
 
 @pytest.mark.asyncio
@@ -62,3 +75,4 @@ async def test_protocol_transport_eof_timeout():
     with pytest.raises(ReadTimeoutError):
         await proto.read()
     await proto.close()
+

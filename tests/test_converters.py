@@ -19,6 +19,8 @@ def test_ensure_bytes():
     assert ensure_bytes(bytearray([0x12, 0x34])) == b"\x12\x34"
     assert ensure_bytes(0x57) == b"\x57"
     assert ensure_bytes([0x01, 0x02]) == b"\x01\x02"
+    assert ensure_bytes((0x01, 0x02)) == b"\x01\x02"
+
 
     # Invalid int ranges
     with pytest.raises(ValueError, match="out of range"):

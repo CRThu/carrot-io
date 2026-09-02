@@ -88,6 +88,7 @@ class FixedLengthCodec(BaseCodec):
 class FramedBinaryCodec(BaseCodec):
     """
     Framed binary codec: [HEADER][PAYLOAD_LEN][PAYLOAD][CRC/CS].
+    Supports built-in 'sum8', 'xor8', 'crc16', or custom Callable[[bytes], bytes | int].
     """
 
     def __init__(
@@ -97,7 +98,8 @@ class FramedBinaryCodec(BaseCodec):
         length_size: int = 2,
         byteorder: str = "big",
         length_includes_header: bool = False,
-        crc_type: str | None = None,
+        crc_type: str | Any | None = None,
+        crc_size: int | None = None,
     ) -> None:
         self.header = header
         self.length_offset = length_offset
@@ -106,10 +108,31 @@ class FramedBinaryCodec(BaseCodec):
         self.length_includes_header = length_includes_header
         self.crc_type = crc_type
 
+        if crc_size is not None:
+            self.crc_size = crc_size
+        elif crc_type in ("sum8", "xor8"):
+            self.crc_size = 1
+        elif crc_type == "crc16":
+            self.crc_size = 2
+        elif callable(crc_type):
+            self.crc_size = crc_size if crc_size is not None else 2
+        else:
+            self.crc_size = 0
+
     def _calc_crc(self, data: bytes) -> bytes:
-        if self.crc_type == "sum8":
+        if callable(self.crc_type):
+            res = self.crc_type(data)
+            if isinstance(res, int):
+                return res.to_bytes(self.crc_size or 2, byteorder=self.byteorder)
+            return bytes(res)
+        elif self.crc_type == "sum8":
             s = sum(data) & 0xFF
             return bytes([s])
+        elif self.crc_type == "xor8":
+            x = 0
+            for b in data:
+                x ^= b
+            return bytes([x])
         elif self.crc_type == "crc16":
             crc = 0xFFFF
             for b in data:
@@ -158,7 +181,7 @@ class FramedBinaryCodec(BaseCodec):
             return None, 0
 
         payload_len = int.from_bytes(buffer[len_start:len_end], byteorder=self.byteorder)
-        crc_len = 1 if self.crc_type == "sum8" else (2 if self.crc_type == "crc16" else 0)
+        crc_len = self.crc_size
 
         if self.length_includes_header:
             frame_len = payload_len + crc_len
@@ -170,7 +193,7 @@ class FramedBinaryCodec(BaseCodec):
 
         frame_data = bytes(buffer[:frame_len])
 
-        if self.crc_type:
+        if self.crc_type and crc_len > 0:
             payload_data = frame_data[:-crc_len]
             rx_crc = frame_data[-crc_len:]
             calc_crc = self._calc_crc(payload_data)
@@ -179,6 +202,7 @@ class FramedBinaryCodec(BaseCodec):
 
         payload = frame_data[len_end : frame_len - crc_len]
         return payload, frame_len
+
 
 
 class StructCodec(BaseCodec):

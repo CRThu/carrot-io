@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport
 from cio.core.exceptions import CDllMissingError, PythonPackageMissingError
 from cio.core.registry import registry
+from cio.core.stream import AsyncStreamTransport
 
 
 def _probe_visa() -> bool:
@@ -20,10 +20,11 @@ def _probe_visa() -> bool:
         return False
 
 
-class VisaTransport(AsyncBaseTransport):
+class VisaTransport(AsyncStreamTransport):
     """
     VISA Instrumentation Transport Stub.
     """
+
 
     def __init__(self, resource_name: str = "", address: str | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)

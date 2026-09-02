@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, TypeAlias
 
 # 1. 核心类型别名
-BytesLike: TypeAlias = bytes | bytearray | int | list[int]
+BytesLike: TypeAlias = bytes | bytearray | int | list[int] | tuple[int, ...]
 
 
 # ----------------------------------------------------------------------
@@ -15,7 +15,7 @@ BytesLike: TypeAlias = bytes | bytearray | int | list[int]
 
 def ensure_bytes(data: BytesLike) -> bytes:
     """
-    宽容性类型归一化：将 int, list[int], bytearray 或 bytes 统一转为 bytes。
+    宽容性类型归一化：将 int, list[int], tuple[int, ...], bytearray 或 bytes 统一转为 bytes。
     """
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -23,9 +23,10 @@ def ensure_bytes(data: BytesLike) -> bytes:
         if not 0 <= data <= 255:
             raise ValueError(f"Integer byte value out of range (0-255): {data}")
         return bytes([data])
-    if isinstance(data, list):
+    if isinstance(data, (list, tuple)):
         return bytes(data)
-    raise TypeError(f"Expected bytes, int, or list of ints, got {type(data).__name__}")
+    raise TypeError(f"Expected bytes, int, or sequence of ints, got {type(data).__name__}")
+
 
 
 def to_hex_str(data: BytesLike | int, prefix: bool = True) -> str:

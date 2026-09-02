@@ -57,6 +57,18 @@ def test_factory_composite_rpc_proxy():
 def test_factory_invalid_url():
     with pytest.raises(InvalidUrlError):
         cio.connect("invalid_scheme_xyz://123")
+    with pytest.raises(InvalidUrlError):
+        cio.connect("://malformed")
+    with pytest.raises(InvalidUrlError):
+        cio.connect("")
+
+
+def test_factory_composite_gpio():
+    from cio.composite.gpio import AsyncGpioBridge
+
+    dev = cio.connect("gpio+mock://?pin=5")
+    assert isinstance(dev, AsyncGpioBridge)
+    assert dev.pin == "5"
 
 
 def test_top_level_factory_helpers():
@@ -64,7 +76,19 @@ def test_top_level_factory_helpers():
     assert ser.port == "COM5"
     assert ser.baudrate == 9600
 
+    u = cio.udp(host="10.0.0.1", port=9000)
+    assert u.host == "10.0.0.1"
+    assert u.port == 9000
+
     ft = cio.ftdi(url="ftdi://ftdi:232h/2", baud=57600)
     assert ft.url == "ftdi://ftdi:232h/2"
     assert ft.baudrate == 57600
+
+    # Scan test
+    scanned = cio.scan()
+    assert isinstance(scanned, list)
+
+    scanned_mock = cio.scan(kind="mock")
+    assert isinstance(scanned_mock, list)
+
 

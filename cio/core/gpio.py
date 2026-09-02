@@ -6,16 +6,24 @@ from __future__ import annotations
 import abc
 from typing import Any, Literal
 
-from cio.core.base import SyncableMixin
+from cio.core.base import SyncTransportWrapper
 
 
-class AsyncGpioPin(abc.ABC, SyncableMixin):
+class AsyncGpioPin(abc.ABC):
     """
     Abstract Base Class for GPIO pin control.
     """
 
     def __init__(self) -> None:
-        super().__init__()
+        self._sync_wrapper: SyncTransportWrapper | None = None
+
+    @property
+    def sync(self) -> SyncTransportWrapper:
+        """Universal synchronous wrapper for this GPIO pin."""
+        if self._sync_wrapper is None:
+            self._sync_wrapper = SyncTransportWrapper(self)
+        return self._sync_wrapper
+
 
     @abc.abstractmethod
     async def set_high(self) -> None:

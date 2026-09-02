@@ -266,19 +266,13 @@ class FtdiSpiTransport(AsyncSpiTransport):
             except Exception:
                 pass
 
-    async def _write_impl(self, data: bytes) -> int:
-        await self.transfer(data)
-        return len(data)
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        return await self.transfer(b"\x00" * nbytes)
-
     async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
         if not self._is_open:
             await self.open()
         raw_tx = ensure_bytes(tx_data)
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._port.exchange, raw_tx)
+
 
 
 class FtdiGpioPin(AsyncGpioPin):

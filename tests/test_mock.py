@@ -1,9 +1,11 @@
 """
 Unit tests for MockTransport, MockGpioPin, AsyncBaseTransport, and SyncTransportWrapper.
 """
+import asyncio
 import pytest
 from cio.core.codec import LineCodec
 from cio.testing.mock import MockGpioPin, MockTransport
+
 
 
 @pytest.mark.asyncio
@@ -83,6 +85,34 @@ def test_sync_protocol_transport():
         assert dev.tx_history == [b"REPLY_SYNC\n"]
 
 
+@pytest.mark.asyncio
+async def test_mock_gpio_edges():
+    pin = MockGpioPin(initial_state=False)
+
+    async def trigger():
+        await asyncio.sleep(0.02)
+        await pin.set_high()
+
+    task = asyncio.create_task(trigger())
+    triggered = await pin.wait_for_edge(edge="rising", timeout=0.1)
+    assert triggered is True
+    await task
+
+    # Falling edge
+    async def trigger_falling():
+        await asyncio.sleep(0.02)
+        await pin.set_low()
+
+    task2 = asyncio.create_task(trigger_falling())
+    triggered_falling = await pin.wait_for_edge(edge="falling", timeout=0.1)
+    assert triggered_falling is True
+    await task2
+
+    # Timeout
+    timed_out = await pin.wait_for_edge(edge="both", timeout=0.01)
+    assert timed_out is False
+
+
 def test_sync_gpio_pin():
     pin = MockGpioPin(initial_state=False)
     assert not pin.sync.read_level()
@@ -92,4 +122,5 @@ def test_sync_gpio_pin():
 
     pin.sync.toggle()
     assert not pin.sync.read_level()
+
 

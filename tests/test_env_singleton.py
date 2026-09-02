@@ -131,3 +131,19 @@ def test_safe_cleanup_and_atexit():
 
     # Double cleanup is completely safe
     close_all_devices()
+
+
+@pytest.mark.asyncio
+async def test_dev_async_context_and_raw_access():
+    os.environ["CIO_DEVICE"] = "mock://async_dut"
+
+    raw_inst = dev.raw
+    assert not raw_inst.is_open
+
+    async with dev as async_d:
+        assert async_d.is_open
+        await async_d.write(b"ASYNC_MSG")
+
+    assert not raw_inst.is_open
+    assert raw_inst.tx_history == [b"ASYNC_MSG"]
+

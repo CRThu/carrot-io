@@ -29,22 +29,6 @@ def _finalize_transport(ref_dict: dict[str, Any]) -> None:
         pass
 
 
-class SyncableMixin:
-    """
-    Universal mixin providing lazy-initialized .sync wrapper for synchronous access.
-    """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._sync_wrapper: SyncTransportWrapper | None = None
-
-    @property
-    def sync(self) -> SyncTransportWrapper:
-        if getattr(self, "_sync_wrapper", None) is None:
-            self._sync_wrapper = SyncTransportWrapper(self)
-        return self._sync_wrapper
-
-
 class SyncTransportWrapper:
     """
     Universal synchronous wrapper allowing non-async usage of any async target.
@@ -146,9 +130,10 @@ class SyncTransportWrapper:
             self.close()
 
 
-class AsyncBaseTransport(abc.ABC, SyncableMixin):
+class AsyncBaseTransport(abc.ABC):
     """
     Abstract Base Class for all transport channels.
+    Provides lifecycle management, logging/tracing, and universal synchronous adaptation.
     """
 
     def __init__(
@@ -162,7 +147,6 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
         show_len: bool = True,
         max_bytes: int = 64,
     ) -> None:
-        super().__init__()
         self.timeout = float(timeout) if timeout is not None else None
         self.buffer_size = buffer_size
         self.logger = IoLogger(
@@ -174,12 +158,18 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
             max_bytes=max_bytes,
         )
 
-        self._read_lock = asyncio.Lock()
-        self._write_lock = asyncio.Lock()
         self._is_open = False
+        self._sync_wrapper: SyncTransportWrapper | None = None
 
         self._cleanup_dict = {"cleanup": self._sync_cleanup}
         self._finalizer = weakref.finalize(self, _finalize_transport, self._cleanup_dict)
+
+    @property
+    def sync(self) -> SyncTransportWrapper:
+        """Universal synchronous wrapper for this transport."""
+        if self._sync_wrapper is None:
+            self._sync_wrapper = SyncTransportWrapper(self)
+        return self._sync_wrapper
 
     def _sync_cleanup(self) -> None:
         """Synchronous cleanup logic called by finalizer."""
@@ -206,62 +196,6 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
     async def close(self) -> None:
         """Close connection and release resources."""
         self._is_open = False
-
-    async def _write_impl(self, data: bytes) -> int:
-        """Subclass implementation for writing bytes (stream/packet transports)."""
-        raise NotImplementedError(f"{self.__class__.__name__} does not implement raw byte stream write")
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        """Subclass implementation for reading raw bytes (stream transports)."""
-        raise NotImplementedError(f"{self.__class__.__name__} does not implement raw byte stream read")
-
-    async def write(self, data: BytesLike, timeout: float | None = None) -> int:
-        """Write raw bytes concurrency-safely with optional timeout."""
-        if not self._is_open:
-            await self.open()
-
-        raw_data = ensure_bytes(data)
-        effective_timeout = timeout if timeout is not None else self.timeout
-        async with self._write_lock:
-            if effective_timeout is not None:
-                try:
-                    written = await asyncio.wait_for(self._write_impl(raw_data), timeout=effective_timeout)
-                except asyncio.TimeoutError as err:
-                    raise WriteTimeoutError(f"Write operation timed out after {effective_timeout}s") from err
-            else:
-                written = await self._write_impl(raw_data)
-
-            self.logger.log_out(raw_data[:written] if written else raw_data)
-            return written
-
-    async def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:
-        """Read raw bytes concurrency-safely with optional timeout."""
-        if not self._is_open:
-            await self.open()
-
-        effective_timeout = timeout if timeout is not None else self.timeout
-        async with self._read_lock:
-            if effective_timeout is not None:
-                try:
-                    data = await asyncio.wait_for(self._read_impl(nbytes), timeout=effective_timeout)
-                except asyncio.TimeoutError as err:
-                    raise ReadTimeoutError(f"Read operation timed out after {effective_timeout}s") from err
-            else:
-                data = await self._read_impl(nbytes)
-
-            self.logger.log_in(data)
-            return data
-
-    async def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:
-        """Write a command, wait delay if specified, and return response."""
-        await self.write(cmd, timeout=timeout)
-        if delay > 0:
-            await asyncio.sleep(delay)
-        return await self.read(-1, timeout=timeout)
-
-    async def flush(self) -> None:
-        """Flush internal buffers."""
-        pass
 
     def history(self, limit: int = 100) -> list[LogEntry]:
         """Get history log entries."""
@@ -306,3 +240,4 @@ class AsyncBaseTransport(abc.ABC, SyncableMixin):
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         return self.sync.__exit__(exc_type, exc_val, exc_tb)
+

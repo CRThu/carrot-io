@@ -9,9 +9,10 @@ async def main():
     try:
         # async with cio.connect("udp://127.0.0.1:5025", timeout=2.0) as dev:
         async with cio.udp("127.0.0.1", port=5025, timeout=2.0) as dev:
-            await dev.write_packet(b"\x01\x02\x03\x04")
-            packet = await dev.read_packet()
+            await dev.write(b"\x01\x02\x03\x04")
+            packet = await dev.read()
             print("收到 UDP 数据包:", packet)
+
     except cio.ReadTimeoutError:
         print("[超时提示] 未收到 UDP 数据包响应")
     except cio.TransportError as e:

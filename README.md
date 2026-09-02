@@ -240,36 +240,41 @@ asyncio.run(main())
 
 ---
 
-### 2. 基础传输接口 (`AsyncBaseTransport`)
+### 2. 基础传输契约分层
 
-所有传输管道与协议桥均继承自 `AsyncBaseTransport`。
-
-#### 方法与属性全清单
-
+#### ① 根基类公共契约 (`AsyncBaseTransport`)
 - **`async open() -> None`**：建立物理或网络连接。
 - **`async close() -> None`**：关闭连接并释放操作系统/硬件资源。
 - **`is_open: bool`**（属性）：获取当前连接状态。
-- **`async write(data: bytes, timeout: float | None = None) -> int`**：并发安全地写入原始字节，返回成功写入的字节数。
-- **`async read(nbytes: int = -1, timeout: float | None = None) -> bytes`**：并发安全地读取字节（`nbytes=-1` 表示读取当前可用全部字节）。
-- **`async query(cmd: bytes, delay: float = 0.0, timeout: float | None = None) -> bytes`**：发送指令并在延时 `delay` 秒后读取响应。
-- **`async flush() -> None`**：清空内部缓冲区残留数据。
-- **`history(limit: int = 100) -> list[LogEntry]`**：获取最近 `limit` 条 TX/RX 日志。
-- **`bind(codec: BaseCodec) -> ProtocolTransport`**：绑定 Codec，返回全新的强类型 Protocol 实例。
-- **`sync: SyncTransportWrapper`**（属性）：获取同步包装对象，允许非 async 代码直接调用 `.open()`, `.write()`, `.read()`, `.close()`。
+- **`trace: bool`**（属性）：动态开关终端彩色 Hexdump 跟踪。
+- **`history(limit: int = 100) -> list[LogEntry]`**：获取最近 `limit` 条 TX/RX/EVT 结构化内存日志。
+- **`dump_history(...) -> str`**：按需渲染最近的 Hex/ASCII 交互记录。
+- **`bind(codec: BaseCodec) -> ProtocolTransport`**：绑定 Codec 编解码器，返回全新的强类型 Protocol 实例。
+- **`sync: SyncTransportWrapper`**（属性）：获取通用同步适配器（如 `dev.sync.write(...)`）。
+
+#### ② 连续流式传输 (`AsyncStreamTransport`)
+- **`async write(data: BytesLike, timeout: float | None = None) -> int`**：并发安全地写入原始字节序列。
+- **`async read(nbytes: int = -1, timeout: float | None = None) -> bytes`**：从 FIFO 缓冲区或底层流中读取字节（`nbytes=-1` 读取当前可用所有字节）。
+- **`async query(cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes`**：发送指令并在延时后读取响应。
+- **`async read_exact(nbytes: int, timeout: float | None = None) -> bytes`**：精确读取指定字节数。
+- **`async read_until(delimiter: bytes = b"\n", timeout: float | None = None) -> bytes`**：流式读取直到遇到定界符。
+- **`async flush() -> None`**：清空内部 FIFO 缓冲区。
+
+#### ③ 有界报文传输 (`AsyncPacketTransport`)
+- **`async write(data: BytesLike, timeout: float | None = None) -> int`**：发送单条完整报文。
+- **`async read(nbytes: int = -1, timeout: float | None = None) -> bytes`**：接收单条完整报文（保持报文边界）。
+- **`async query(cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes`**：发送报文并等待响应报文。
+- **`async flush() -> None`**：清空内部待接收报文队列。
 
 ---
 
-### 3. 字节流与报文专属接口 (`AsyncStreamTransport` & `AsyncPacketTransport`)
+### 3. 字节流专属扩展能力 (`AsyncStreamTransport`)
 
-#### `AsyncStreamTransport` (流式传输，继承自 `AsyncBaseTransport`)
 - **`async read_until(delimiter: bytes = b'\n', timeout: float | None = None) -> bytes`**：持续读取字节流直到遇到定界符 `delimiter` 并返回（包含定界符）。
 - **`async read_exact(nbytes: int, timeout: float | None = None) -> bytes`**：准确读取 `nbytes` 字节，未集齐前阻塞等待或超时抛出 `ReadTimeoutError`。
 
-#### `AsyncPacketTransport` (报文传输，继承自 `AsyncBaseTransport`)
-- **`async read_packet(timeout: float | None = None) -> bytes`**：从队列中读取单个独立报文。
-- **`async write_packet(packet: bytes, timeout: float | None = None) -> int`**：发送单个独立报文。
-
 ---
+
 
 ### 4. 总线协议与 GPIO 专属接口 (Bus & GPIO Interfaces)
 
@@ -292,16 +297,17 @@ asyncio.run(main())
 
 ---
 
-### 5. 协议编解码器 (Codecs)
+### 5. 协议编解码器与高层绑定 (`Codecs` & `dev.bind()`)
 
-继承自 `BaseCodec`，包含双向接口：`encode(message) -> bytes` 与 `decode(buffer: bytearray) -> (decoded_msg, consumed_len)`。
+继承自 `BaseCodec`，包含双向契约：`encode(message) -> bytes` 与 `decode(buffer: bytearray) -> (decoded_msg, consumed_len)`。通过 `dev.bind(codec)` 可直接升级为包含 `write()`、`read()`、`query()`、`flush()` 的强类型 `ProtocolTransport`。
 
-- **`LineCodec(delimiter: bytes = b'\n', encoding: str = 'utf-8')`**：基于文本定界符（如 SCPI/NMEA）的编解码器。
+- **`LineCodec(delimiter: bytes = b'\n', encoding: str = 'utf-8')`**：基于文本定界符（如 SCPI / NMEA）的编解码器。
 - **`FixedLengthCodec(length: int)`**：定长 N 字节二进制帧编解码器。
-- **`FramedBinaryCodec(header=b'\xAA\x55', length_offset=2, length_size=2, length_includes_header=False, crc_type=None)`**：标准工业二进制帧 `[HEADER][LEN][PAYLOAD][CRC]` 编解码器，支持自动寻头与 `sum8` / `crc16` 校验。
-- **`StructCodec(fmt: str)`**：基于 Python `struct` 格式串（如 `">IH"`）的打包解码器。
+- **`FramedBinaryCodec(header=b'\xAA\x55', length_offset=2, length_size=2, length_includes_header=False, crc_type=None, crc_size=None)`**：标准工业二进制帧 `[HEADER][LEN][PAYLOAD][CRC]` 编解码器，支持自动寻头与 `sum8` / `xor8` / `crc16` 或自定义 `Callable[[bytes], bytes | int]` 校验函数。
+- **`StructCodec(fmt: str)`**：基于 Python `struct` 格式串（如 `">IH"`）的元组打包/解包解码器。
 
 ---
+
 
 ### 6. 远程硬件 RPC 代理网关 (RPC Remote Hardware Proxy & Gateway)
 

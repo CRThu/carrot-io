@@ -171,10 +171,12 @@ class UdpTransport(AsyncPacketTransport):
         self._transport.sendto(data)
         return len(data)
 
-    async def _read_packet_impl(self) -> bytes:
+    async def _read_impl(self) -> bytes:
         if not self._is_open:
             raise ConnectionError("UDP socket not open")
         return await self._async_queue.get()
+
+
 
 
 registry.register(

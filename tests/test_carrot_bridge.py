@@ -41,17 +41,8 @@ async def test_carrot_bridge_basic_call():
     await bridge.close()
 
 
-def test_parse_hex_bytes_helper():
-    from cio.core.converters import parse_hex_bytes
-    assert parse_hex_bytes(b"\x12\x34", 2) == b"\x12\x34"
-    assert parse_hex_bytes(0x1234, 2) == b"\x12\x34"
-    assert parse_hex_bytes("0x1234", 2) == b"\x12\x34"
-    assert parse_hex_bytes("1234", 2) == b"\x12\x34"
-    assert parse_hex_bytes("ABC", 2) == b"\x0A\xBC"
-    assert parse_hex_bytes(None, 2) == b""
-
-
 @pytest.mark.asyncio
+
 async def test_carrot_bridge_non_return_logging():
     pipe = MockTransport()
     bridge = CarrotBridge(pipe)
@@ -340,68 +331,8 @@ def test_gpio_bridge_sync_usage():
     assert gpio.sync.read_level() is True
 
 
-def test_converters_utilities():
-    from cio.core.converters import (
-        format_arg,
-        parse_bool,
-        parse_hex_bytes,
-        parse_int,
-        parse_int_list,
-        to_hex_str,
-    )
-
-    # 1. parse_int
-    assert parse_int(123) == 123
-    assert parse_int("123") == 123
-    assert parse_int("0x7B") == 123
-    assert parse_int(b"\x00\x7B") == 123
-    assert parse_int(None, default=99) == 99
-    assert parse_int("invalid", default=99) == 99
-
-    # 2. parse_bool
-    assert parse_bool(True) is True
-    assert parse_bool(False) is False
-    assert parse_bool(1) is True
-    assert parse_bool(0) is False
-    assert parse_bool("1") is True
-    assert parse_bool("true") is True
-    assert parse_bool("HIGH") is True
-    assert parse_bool("0") is False
-    assert parse_bool("false") is False
-
-    # 3. parse_hex_bytes
-    assert parse_hex_bytes("0x1234") == b"\x12\x34"
-    assert parse_hex_bytes("1234") == b"\x12\x34"
-    assert parse_hex_bytes("0xABC") == b"\x0A\xBC"
-    assert parse_hex_bytes(0x1234, nbytes=2) == b"\x12\x34"
-    assert parse_hex_bytes(b"\x12\x34\x56", nbytes=2) == b"\x12\x34"
-    assert parse_hex_bytes(None) == b""
-    assert parse_hex_bytes("invalid_hex") == b""
-
-    # 4. parse_int_list
-    assert parse_int_list("0x50,0x57") == [0x50, 0x57]
-    assert parse_int_list("0x50, 0x57") == [0x50, 0x57]
-    assert parse_int_list("[0x50, 0x57]") == [0x50, 0x57]
-    assert parse_int_list("0x50") == [0x50]
-    assert parse_int_list("[0x50]") == [0x50]
-    assert parse_int_list(0x50) == [0x50]
-    assert parse_int_list([0x50, 0x57]) == [0x50, 0x57]
-    assert parse_int_list("") == []
-    assert parse_int_list("[]") == []
-    assert parse_int_list(None) == []
-
-    # 5. to_hex_str & format_arg
-    assert to_hex_str(0x57) == "0x57"
-    assert to_hex_str(0x57, prefix=False) == "57"
-    assert to_hex_str(b"\x12\x34") == "0x1234"
-    assert to_hex_str([0x12, 0x34]) == "0x1234"
-    assert format_arg(b"\xAB\xCD") == "0xABCD"
-    assert format_arg([0x01, 0x02]) == "0x0102"
-    assert format_arg("A1") == "A1"
-    assert format_arg(100) == "100"
-
-
 @pytest.mark.asyncio
+
 async def test_i2c_bridge_scan_async():
     pipe = MockTransport()
     i2c = AsyncI2cBridge(pipe)
@@ -435,4 +366,16 @@ def test_i2c_bridge_scan_sync():
     with i2c as dev:
         addrs = dev.scan()
         assert addrs == [0x50, 0x57]
+
+
+def test_carrot_bridge_sync_call():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"GetStatus()\n", b"[RETURN]: 1\n")
+    bridge = CarrotBridge(pipe)
+
+    with bridge as b:
+        assert b.is_open
+        res = b.call("GetStatus")
+        assert res == 1
+
 

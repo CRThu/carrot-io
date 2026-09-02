@@ -60,17 +60,12 @@ class AsyncI2cBridge(AsyncI2cTransport):
         self._is_open = False
         await self._bridge.close()
 
-    async def _write_impl(self, data: bytes) -> int:
-        return await self._bridge.write(data)
-
-    async def _read_impl(self, nbytes: int) -> bytes:
-        return await self._bridge.read(nbytes)
-
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
         res = await self._bridge.call("IIC.R", to_hex_str(addr), nbytes, timeout=timeout)
         return parse_hex_bytes(res, nbytes=nbytes)
+
 
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:

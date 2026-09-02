@@ -36,13 +36,8 @@ def test_visa_stub_error():
         dev.sync.open()
 
 
-def test_usb_stub_error():
-    dev = cio.connect("usb://0x0403:0x6001")
-    with pytest.raises((PythonPackageMissingError, CDllMissingError, DriverMissingError)):
-        dev.sync.open()
-
-
 @pytest.mark.asyncio
+
 async def test_tcp_udp_instantiation():
     tcp_dev = cio.tcp("127.0.0.1", 9999)
     assert tcp_dev.host == "127.0.0.1"
@@ -98,9 +93,10 @@ async def test_udp_transport_integration():
     host, port = transport.get_extra_info("sockname")
 
     async with cio.udp(host, port) as client:
-        await client.write_packet(b"HELLO UDP")
-        resp = await client.read_packet(timeout=2.0)
+        await client.write(b"HELLO UDP")
+        resp = await client.read(timeout=2.0)
         assert resp == b"HELLO UDP"
+
 
     transport.close()
 
@@ -259,6 +255,37 @@ async def test_ftdi_backends_mocked():
             assert len(devs) == 1
             assert devs[0]["serial"] == "FT123"
 
+        # 6. FTDI Package Missing Errors
+        with patch("cio.backends.ftdi._probe_ftdi", return_value=False):
+            assert _scan_ftdi() == []
+
+            fu_err = FtdiUartTransport(url="ftdi://ftdi:232h/1")
+            with pytest.raises(PythonPackageMissingError):
+                await fu_err.open()
+
+            fi_err = FtdiI2cTransport(url="ftdi://ftdi:2232h/1")
+            with pytest.raises(PythonPackageMissingError):
+                await fi_err.open()
+
+            fs_err = FtdiSpiTransport(url="ftdi://ftdi:2232h/1")
+            with pytest.raises(PythonPackageMissingError):
+                await fs_err.open()
+
+
+        # 7. FTDI Open Connection Errors
+        with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
+             patch("pyftdi.i2c.I2cController", side_effect=Exception("Device Busy")):
+            fi_fail = FtdiI2cTransport(url="ftdi://ftdi:2232h/1")
+            with pytest.raises(ConnectionError, match="Failed to configure FTDI I2C"):
+                await fi_fail.open()
+
+        with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
+             patch("pyftdi.spi.SpiController", side_effect=Exception("Device Busy")):
+            fs_fail = FtdiSpiTransport(url="ftdi://ftdi:2232h/1")
+            with pytest.raises(ConnectionError, match="Failed to configure FTDI SPI"):
+                await fs_fail.open()
+
+
 
 # ==========================================
 # Socket Error Paths
@@ -286,5 +313,49 @@ async def test_socket_error_paths():
     with pytest.raises(ConnectionError):
         await udp._write_impl(b"DATA")
     with pytest.raises(ConnectionError):
-        await udp._read_packet_impl()
+        await udp._read_impl()
+
+
+def test_custom_backend_registry_robustness():
+    from cio.core.registry import BackendRegistry
+    from cio.core.exceptions import InvalidUrlError
+    from cio.testing.mock import MockTransport
+
+    reg = BackendRegistry()
+
+    # 1. Register with default scan_fn
+    reg.register("simple", ["simp"], MockTransport, probe_fn=lambda: True)
+    assert reg.is_available("simp") is True
+    assert reg.is_available("simple") is True
+    assert reg.is_available("unknown") is False
+    assert reg.scan("simp") == []
+
+    # 2. Probe raises exception
+    def bad_probe():
+        raise ImportError("Test missing module")
+
+    def generic_bad_probe():
+        raise RuntimeError("Unexpected error")
+
+    reg.register("bad_p1", ["bp1"], MockTransport, probe_fn=bad_probe)
+    reg.register("bad_p2", ["bp2"], MockTransport, probe_fn=generic_bad_probe)
+    assert reg.is_available("bp1") is False
+    assert reg.is_available("bp2") is False
+    assert reg.scan("bp1") == []
+    assert reg.scan("bp2") == []
+
+    # 3. Scan raises exception
+    def bad_scan():
+        raise RuntimeError("Scan hardware failure")
+
+    reg.register("bad_s", ["bs"], MockTransport, probe_fn=lambda: True, scan_fn=bad_scan)
+    assert reg.scan("bs") == []
+
+    # 4. Unknown scheme lookup
+    with pytest.raises(InvalidUrlError):
+        reg.get_backend_info("nonexistent_xyz")
+
+
+
+
 
