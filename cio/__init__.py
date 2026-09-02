@@ -114,7 +114,7 @@ def ftdi(
     return FtdiUartTransport(url=url, baud=baud, timeout=timeout, **kwargs)
 
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 __all__ = [
     # Singleton & Env Injection
