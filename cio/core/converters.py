@@ -42,11 +42,11 @@ def to_hex_str(data: BytesLike | int, prefix: bool = True) -> str:
 
 def format_arg(arg: Any) -> str:
     """
-    CarrotBridge ASCII 通用参数格式化（bytes/list 转 0xHEX，其余转 str）。
+    CarrotBridge ASCII 通用参数格式化（bytes/list/tuple 转 0xHEX，其余转 str）。
     """
     if isinstance(arg, (bytes, bytearray)):
         return f"0x{bytes(arg).hex().upper()}"
-    if isinstance(arg, list):
+    if isinstance(arg, (list, tuple)):
         try:
             return f"0x{ensure_bytes(arg).hex().upper()}"
         except (ValueError, TypeError):
@@ -88,6 +88,9 @@ def parse_bool(res: Any) -> bool:
     """
     if isinstance(res, bool):
         return res
+    if isinstance(res, (bytes, bytearray)):
+        clean = res.decode("utf-8", errors="replace").strip().lower()
+        return clean in ("1", "true", "yes", "on", "high")
     if isinstance(res, (int, float)):
         return bool(res)
     if isinstance(res, str):
@@ -105,6 +108,8 @@ def parse_hex_bytes(res: Any, nbytes: int | None = None) -> bytes:
         return data[:nbytes] if nbytes is not None else data
 
     if isinstance(res, int):
+        if res < 0:
+            return b""
         if nbytes is not None:
             try:
                 return res.to_bytes(nbytes, byteorder="big")
@@ -139,6 +144,8 @@ def parse_int_list(res: Any) -> list[int]:
         return [int(x) if not isinstance(x, str) else int(x.strip(), 0) for x in res]
     if isinstance(res, int):
         return [res]
+    if isinstance(res, (bytes, bytearray)):
+        res = res.decode("utf-8", errors="replace")
     if isinstance(res, str):
         clean = res.strip()
         if clean.startswith("[") and clean.endswith("]"):

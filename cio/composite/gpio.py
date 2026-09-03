@@ -28,11 +28,34 @@ class AsyncGpioBridge(AsyncGpioPin):
             self._bridge = transport
         else:
             self._bridge = CarrotBridge(transport, **kwargs)
+        self.logger = self._bridge.logger
         self.pin = pin
 
     @property
     def bridge(self) -> CarrotBridge:
         return self._bridge
+
+    @property
+    def transport(self) -> AsyncBaseTransport:
+        return self._bridge._underlying
+
+    @property
+    def is_open(self) -> bool:
+        return self._bridge.is_open
+
+    @property
+    def trace(self) -> bool:
+        return self._bridge.trace
+
+    @trace.setter
+    def trace(self, value: bool) -> None:
+        self._bridge.trace = bool(value)
+
+    async def open(self) -> None:
+        await self._bridge.open()
+
+    async def close(self) -> None:
+        await self._bridge.close()
 
     async def set_high(self) -> None:
         await self._bridge.call("IO.W", self.pin, 1)
@@ -76,17 +99,19 @@ class AsyncGpioBridge(AsyncGpioPin):
         edge: Literal["rising", "falling", "both"] = "rising",
         timeout: float | None = None,
     ) -> bool:
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         initial_level = await self.read_level()
         while True:
             await asyncio.sleep(0.01)
             current_level = await self.read_level()
             if initial_level != current_level:
-                if edge == "rising" and current_level:
+                prev = initial_level
+                initial_level = current_level
+                if edge == "rising" and not prev and current_level:
                     return True
-                elif edge == "falling" and not current_level:
+                elif edge == "falling" and prev and not current_level:
                     return True
                 elif edge == "both":
                     return True
-            if timeout is not None and (asyncio.get_event_loop().time() - start_time) >= timeout:
+            if timeout is not None and (asyncio.get_running_loop().time() - start_time) >= timeout:
                 return False

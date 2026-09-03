@@ -101,14 +101,6 @@ class FtdiUartTransport(AsyncUartTransport):
                 pass
         self._port = None
 
-    def _sync_cleanup(self) -> None:
-        self._is_open = False
-        if self._port:
-            try:
-                self._port.close()
-            except Exception:
-                pass
-
     async def _write_impl(self, data: bytes) -> int:
         if not self._port or not self._is_open:
             raise ConnectionError("FTDI UART not open")
@@ -173,14 +165,6 @@ class FtdiI2cTransport(AsyncI2cTransport):
             except Exception:
                 pass
         self._i2c = None
-
-    def _sync_cleanup(self) -> None:
-        self._is_open = False
-        if self._i2c:
-            try:
-                self._i2c.terminate()
-            except Exception:
-                pass
 
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self._is_open:
@@ -258,14 +242,6 @@ class FtdiSpiTransport(AsyncSpiTransport):
         self._spi = None
         self._port = None
 
-    def _sync_cleanup(self) -> None:
-        self._is_open = False
-        if self._spi:
-            try:
-                self._spi.terminate()
-            except Exception:
-                pass
-
     async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
         if not self._is_open:
             await self.open()
@@ -315,17 +291,20 @@ class FtdiGpioPin(AsyncGpioPin):
         timeout: float | None = None,
     ) -> bool:
         initial = await self.read_level()
-        start = asyncio.get_event_loop().time()
+        start = asyncio.get_running_loop().time()
         while True:
             await asyncio.sleep(0.01)
             current = await self.read_level()
-            if edge == "rising" and not initial and current:
-                return True
-            if edge == "falling" and initial and not current:
-                return True
-            if edge == "both" and initial != current:
-                return True
-            if timeout is not None and (asyncio.get_event_loop().time() - start) >= timeout:
+            if initial != current:
+                prev = initial
+                initial = current
+                if edge == "rising" and not prev and current:
+                    return True
+                elif edge == "falling" and prev and not current:
+                    return True
+                elif edge == "both":
+                    return True
+            if timeout is not None and (asyncio.get_running_loop().time() - start) >= timeout:
                 return False
 
 

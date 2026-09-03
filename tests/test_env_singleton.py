@@ -147,3 +147,13 @@ async def test_dev_async_context_and_raw_access():
     assert not raw_inst.is_open
     assert raw_inst.tx_history == [b"ASYNC_MSG"]
 
+
+def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
+    """Verify that setting attributes on cio.dev updates the underlying default device."""
+    monkeypatch.setenv("CIO_DEVICE", "mock://dut_setattr")
+    dev.trace = True
+    assert dev.raw.trace is True
+    dev.timeout = 4.2
+    assert dev.raw.timeout == 4.2
+
+

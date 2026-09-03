@@ -101,3 +101,22 @@ def test_parse_int_list():
     assert parse_int_list("") == []
     assert parse_int_list("[]") == []
     assert parse_int_list(None) == []
+
+
+def test_converters_extended_edge_cases():
+    """Verify format_arg, parse_bool, parse_hex_bytes, and parse_int_list fixes."""
+    # Tuple support in format_arg
+    assert format_arg((0x12, 0x34)) == "0x1234"
+
+    # Bytes support in parse_bool
+    assert parse_bool(b"0") is False
+    assert parse_bool(b"false") is False
+    assert parse_bool(b"1") is True
+    assert parse_bool(b"true") is True
+
+    # Bytes support in parse_int_list
+    assert parse_int_list(b"0x50, 0x57") == [0x50, 0x57]
+
+    # Negative int in parse_hex_bytes
+    assert parse_hex_bytes(-1) == b""
+

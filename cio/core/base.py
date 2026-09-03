@@ -7,7 +7,6 @@ import abc
 import asyncio
 import inspect
 import threading
-import weakref
 from typing import TYPE_CHECKING, Any
 
 from cio.core.converters import BytesLike, ensure_bytes
@@ -17,16 +16,6 @@ from cio.core.logger import IoLogger, LogEntry
 if TYPE_CHECKING:
     from cio.core.codec import BaseCodec
     from cio.core.protocol import ProtocolTransport
-
-
-def _finalize_transport(ref_dict: dict[str, Any]) -> None:
-    """Finalizer callback called by weakref when transport is garbage collected."""
-    try:
-        cleanup_func = ref_dict.get("cleanup")
-        if cleanup_func:
-            cleanup_func()
-    except Exception:
-        pass
 
 
 class SyncTransportWrapper:
@@ -65,6 +54,11 @@ class SyncTransportWrapper:
                 self._loop.call_soon_threadsafe(self._loop.stop)
                 if self._thread:
                     self._thread.join(timeout=1.0)
+                try:
+                    for task in asyncio.all_tasks(self._loop):
+                        task.cancel()
+                except Exception:
+                    pass
                 self._loop.close()
                 self._loop = None
                 self._thread = None
@@ -116,9 +110,19 @@ class SyncTransportWrapper:
                 return res
 
             # Fast-path caching: bind wrapper to instance __dict__ so subsequent calls bypass __getattr__ entirely
-            setattr(self, name, wrapper)
+            self.__dict__[name] = wrapper
             return wrapper
         return attr
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ("_async", "_loop", "_thread", "_lock") or name.startswith("_"):
+            super().__setattr__(name, value)
+        elif hasattr(type(self), name):
+            super().__setattr__(name, value)
+        elif hasattr(self._async, name):
+            setattr(self._async, name, value)
+        else:
+            super().__setattr__(name, value)
 
     def __enter__(self) -> SyncTransportWrapper:
         if hasattr(self._async, "open"):
@@ -161,19 +165,12 @@ class AsyncBaseTransport(abc.ABC):
         self._is_open = False
         self._sync_wrapper: SyncTransportWrapper | None = None
 
-        self._cleanup_dict = {"cleanup": self._sync_cleanup}
-        self._finalizer = weakref.finalize(self, _finalize_transport, self._cleanup_dict)
-
     @property
     def sync(self) -> SyncTransportWrapper:
         """Universal synchronous wrapper for this transport."""
         if self._sync_wrapper is None:
             self._sync_wrapper = SyncTransportWrapper(self)
         return self._sync_wrapper
-
-    def _sync_cleanup(self) -> None:
-        """Synchronous cleanup logic called by finalizer."""
-        self._is_open = False
 
     @property
     def is_open(self) -> bool:

@@ -92,3 +92,26 @@ def test_top_level_factory_helpers():
     assert isinstance(scanned_mock, list)
 
 
+def test_gpio_bridge_factory_attributes():
+    """Verify that gpio+ URL returns an object with logger, trace, and lifecycle methods."""
+    pin = cio.connect("gpio+serial://COM3?show_hex=true&trace=on")
+    assert hasattr(pin, "logger")
+    assert pin.logger.show_hex is True
+    assert pin.trace is True
+    assert hasattr(pin, "open")
+    assert hasattr(pin, "close")
+    assert hasattr(pin, "is_open")
+
+
+def test_factory_url_query_boolean_options():
+    """Verify that boolean false/0/off options in URL query strings are parsed accurately."""
+    dev = cio.connect("mock://dev?show_hex=false&show_time=0&show_ascii=off&trace=1&max_bytes=128")
+    assert dev.logger.show_hex is False
+    assert dev.logger.show_time is False
+    assert dev.logger.show_ascii is False
+    assert dev.trace is True
+    assert dev.logger.max_bytes == 128
+
+
+
+

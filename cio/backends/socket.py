@@ -72,14 +72,6 @@ class TcpTransport(AsyncStreamTransport):
         self._reader = None
         self._writer = None
 
-    def _sync_cleanup(self) -> None:
-        self._is_open = False
-        if self._writer:
-            try:
-                self._writer.close()
-            except Exception:
-                pass
-
     async def _write_impl(self, data: bytes) -> int:
         if not self._writer:
             raise ConnectionError("TCP socket not open")
@@ -141,6 +133,7 @@ class UdpTransport(AsyncPacketTransport):
             return
 
         loop = asyncio.get_running_loop()
+        self._async_queue = asyncio.Queue()
         try:
             transport, _ = await loop.create_datagram_endpoint(
                 lambda: _UdpProtocol(self._async_queue),
@@ -154,12 +147,6 @@ class UdpTransport(AsyncPacketTransport):
     async def close(self) -> None:
         if not self._is_open:
             return
-        self._is_open = False
-        if self._transport:
-            self._transport.close()
-            self._transport = None
-
-    def _sync_cleanup(self) -> None:
         self._is_open = False
         if self._transport:
             self._transport.close()

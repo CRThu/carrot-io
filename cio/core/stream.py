@@ -125,12 +125,12 @@ class AsyncStreamTransport(AsyncBaseTransport):
             await self.open()
 
         effective_timeout = timeout if timeout is not None else self.timeout
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         async with self._get_read_lock():
             while len(self.fifo) < nbytes:
                 if effective_timeout is not None:
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = effective_timeout - elapsed
                     if remaining <= 0:
                         raise ReadTimeoutError(f"read_exact({nbytes}) timed out after {effective_timeout}s")
@@ -158,7 +158,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
             await self.open()
 
         effective_timeout = timeout if timeout is not None else self.timeout
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         async with self._get_read_lock():
             while True:
@@ -167,7 +167,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
                     return res
 
                 if effective_timeout is not None:
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = effective_timeout - elapsed
                     if remaining <= 0:
                         raise ReadTimeoutError(f"read_until({delimiter!r}) timed out after {effective_timeout}s")

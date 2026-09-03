@@ -124,3 +124,24 @@ def test_sync_gpio_pin():
     assert not pin.sync.read_level()
 
 
+@pytest.mark.asyncio
+async def test_gpio_wait_for_edge_pulse_tracking():
+    """
+    Verify that wait_for_edge correctly tracks transitions across multiple pulses
+    instead of missing the edge due to a stale initial reference level.
+    """
+    pin = MockGpioPin(initial_state=False)
+
+    async def pulse():
+        await pin.set_high()
+        await asyncio.sleep(0.02)
+        await pin.set_low()
+
+    task = asyncio.create_task(pin.wait_for_edge(edge="falling", timeout=0.5))
+    await asyncio.sleep(0.01)
+    await pulse()
+    detected = await task
+    assert detected is True, "Falling edge after high pulse was missed!"
+
+
+

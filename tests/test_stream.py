@@ -2,6 +2,8 @@
 Unit tests for cio.core.stream, cio.core.packet, and cio.core.base abstractions.
 """
 import asyncio
+import gc
+import weakref
 import pytest
 from cio.core.base import AsyncBaseTransport
 from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
@@ -226,6 +228,24 @@ async def test_abstract_base_interfaces_not_implemented():
     with pytest.raises(NotImplementedError):
         await pkt.read()
     await pkt.close()
+
+
+def test_transport_gc_no_memory_leak():
+    """Verify that creating and deleting a transport allows it to be garbage collected."""
+    dev = MockTransport()
+    r = weakref.ref(dev)
+    del dev
+    gc.collect()
+    assert r() is None, "Transport instance leaked and was not garbage collected!"
+
+
+def test_sync_wrapper_setattr_passthrough():
+    """Verify that setting attributes on .sync updates the underlying async transport."""
+    dev = MockTransport()
+    dev.sync.timeout = 7.5
+    assert dev.timeout == 7.5
+    assert dev.sync.timeout == 7.5
+
 
 
 

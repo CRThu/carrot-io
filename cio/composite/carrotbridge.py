@@ -91,11 +91,11 @@ class CarrotBridge(AsyncBaseTransport):
             self.logger.log_out(cmd_bytes, tag="CMD")
             await self._underlying.write(cmd_bytes, timeout=actual_timeout)
 
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
             while True:
                 remaining: float | None = None
                 if actual_timeout is not None:
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = actual_timeout - elapsed
                     if remaining <= 0:
                         raise ReadTimeoutError(f"CarrotBridge call '{func}' timed out after {actual_timeout}s")

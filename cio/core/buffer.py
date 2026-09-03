@@ -3,7 +3,6 @@ Buffer management: FifoBuffer for byte streams and PacketQueue for message packe
 """
 from __future__ import annotations
 
-import asyncio
 from collections import deque
 from enum import Enum
 from cio.core.exceptions import BufferOverflowError

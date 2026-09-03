@@ -270,3 +270,27 @@ def test_verify_diff_edge_cases():
     assert "Expected {'b': 2}, Got {'a': 1}" in results[0].diff_line
 
 
+def test_verify_mask_mismatch_not_false_positive():
+    """Verify that mask comparison fails when expected has unmasked extra bytes."""
+    # 1 byte actual vs 2 bytes expected with 1-byte mask 0xFF
+    with VerificationSession(print_pass=False, print_fail=False):
+        passed = check(b"\x10", b"\x10\x20", mask=0xFF)
+        assert passed is False
+
+
+def test_verify_negative_integer():
+    """Verify that comparing negative integers does not raise OverflowError."""
+    with VerificationSession(print_pass=False, print_fail=False):
+        assert check(-1, -1) is True
+        assert check(-5, -5) is True
+        assert check(-1, 1) is False
+
+
+def test_verify_single_digit_hex_string():
+    """Verify that single digit hex strings like '0x5' or 'A' are parsed into bytes."""
+    with VerificationSession(print_pass=False, print_fail=False):
+        assert check(b"\x05", "0x5") is True
+        assert check(b"\x0A", "0xA") is True
+
+
+

@@ -69,11 +69,11 @@ class ProtocolTransport:
                 return msg
 
             effective_timeout = timeout if timeout is not None else self.transport.timeout
-            start_time = asyncio.get_event_loop().time()
+            start_time = asyncio.get_running_loop().time()
 
             while True:
                 if effective_timeout is not None:
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = effective_timeout - elapsed
                     if remaining <= 0:
                         raise ReadTimeoutError(f"Protocol read timed out after {effective_timeout}s")

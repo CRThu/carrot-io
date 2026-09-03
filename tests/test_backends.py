@@ -131,7 +131,6 @@ async def test_serial_transport_mocked_lifecycle():
         r = await st.read(4)
         assert r == b"OK\r\n"
 
-        st._sync_cleanup()
         await st.close()
         assert not st.is_open
 
@@ -200,7 +199,6 @@ async def test_ftdi_backends_mocked():
             assert fu.is_open
             assert await fu.write(b"PING") == 4
             assert await fu.read(4) == b"RESP"
-            fu._sync_cleanup()
             await fu.close()
             assert not fu.is_open
 
@@ -216,7 +214,6 @@ async def test_ftdi_backends_mocked():
             assert fi.is_open
             assert await fi.write(0x50, [0x01, 0x02]) == 2
             assert await fi.read(0x50, 2) == b"\x12\x34"
-            fi._sync_cleanup()
             await fi.close()
             assert not fi.is_open
 
@@ -233,7 +230,6 @@ async def test_ftdi_backends_mocked():
             assert await fs.transfer(b"\x11\x22") == b"\xAA\xBB"
             assert await fs.write(b"\x11\x22") == 2
             assert await fs.read(2) == b"\xAA\xBB"
-            fs._sync_cleanup()
             await fs.close()
             assert not fs.is_open
 

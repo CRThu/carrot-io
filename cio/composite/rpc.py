@@ -131,7 +131,7 @@ class RpcRemoteTransport(AsyncStreamTransport):
         return b""
 
     async def call_method(self, method: str, params: dict[str, Any] | None = None, timeout: float | None = None) -> Any:
-        return await self._send_rpc(method, params)
+        return await self._send_rpc(method, params, timeout=timeout)
 
 
 class RpcServer:

@@ -37,6 +37,8 @@ def _normalize_data(val: Any) -> tuple[bytes | None, str]:
         b = bytes(val)
         return b, " ".join(f"{x:02X}" for x in b)
     if isinstance(val, int):
+        if val < 0:
+            return None, str(val)
         if 0 <= val <= 255:
             return bytes([val]), f"{val:02X}"
         bit_len = val.bit_length() or 8
@@ -48,12 +50,15 @@ def _normalize_data(val: Any) -> tuple[bytes | None, str]:
         return b, " ".join(f"{x:02X}" for x in b)
     if isinstance(val, str):
         clean = val.replace(" ", "").replace("0x", "").replace("0X", "").replace(",", "")
-        if clean and len(clean) % 2 == 0 and all(c in "0123456789abcdefABCDEF" for c in clean):
-            try:
-                b = bytes.fromhex(clean)
-                return b, " ".join(f"{x:02X}" for x in b)
-            except ValueError:
-                pass
+        if clean:
+            if len(clean) % 2 != 0:
+                clean = "0" + clean
+            if all(c in "0123456789abcdefABCDEF" for c in clean):
+                try:
+                    b = bytes.fromhex(clean)
+                    return b, " ".join(f"{x:02X}" for x in b)
+                except ValueError:
+                    pass
         return None, repr(val)
     return None, repr(val)
 
@@ -228,15 +233,21 @@ class VerificationSession:
         if mask is not None and act_bytes is not None and exp_bytes is not None:
             m_bytes, mask_str = _normalize_data(mask)
             if m_bytes is not None:
-                if len(m_bytes) < len(act_bytes):
-                    m_bytes = (m_bytes * (len(act_bytes) // len(m_bytes) + 1))[: len(act_bytes)]
+                max_len = max(len(act_bytes), len(exp_bytes))
+                if len(m_bytes) < max_len:
+                    m_bytes = (m_bytes * (max_len // len(m_bytes) + 1))[:max_len]
                 else:
-                    m_bytes = m_bytes[: len(act_bytes)]
-                if len(exp_bytes) < len(act_bytes):
-                    exp_bytes = exp_bytes.ljust(len(act_bytes), b"\x00")
-                masked_act = bytes(a & m for a, m in zip(act_bytes, m_bytes))
-                masked_exp = bytes(e & m for e, m in zip(exp_bytes, m_bytes))
-                passed = masked_act == masked_exp
+                    m_bytes = m_bytes[:max_len]
+
+                pad_act = act_bytes.ljust(max_len, b"\x00")
+                pad_exp = exp_bytes.ljust(max_len, b"\x00")
+                masked_act = bytes(a & m for a, m in zip(pad_act, m_bytes))
+                masked_exp = bytes(e & m for e, m in zip(pad_exp, m_bytes))
+                passed = (masked_act == masked_exp) and (
+                    len(act_bytes) == len(exp_bytes)
+                    or (len(act_bytes) < len(exp_bytes) and all(m == 0 for m in m_bytes[len(act_bytes):]))
+                    or (len(exp_bytes) < len(act_bytes) and all(m == 0 for m in m_bytes[len(exp_bytes):]))
+                )
             else:
                 passed = actual == expected
         elif act_bytes is not None and exp_bytes is not None:

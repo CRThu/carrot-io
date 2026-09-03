@@ -7,6 +7,7 @@ import urllib.parse
 from typing import Any
 
 from cio.core.base import AsyncBaseTransport
+from cio.core.converters import parse_bool, parse_int
 from cio.core.exceptions import InvalidUrlError
 from cio.core.registry import registry
 
@@ -45,12 +46,7 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     merged_kwargs = {**url_params, **kwargs}
 
     trace_opt = merged_kwargs.pop("trace", None)
-    trace_val: bool | None = None
-    if trace_opt is not None:
-        if isinstance(trace_opt, bool):
-            trace_val = trace_opt
-        else:
-            trace_val = str(trace_opt).strip().lower() in ("true", "1", "on", "yes")
+    trace_val: bool | None = parse_bool(trace_opt) if trace_opt is not None else None
 
     show_hex_opt = merged_kwargs.pop("show_hex", None)
     show_ascii_opt = merged_kwargs.pop("show_ascii", None)
@@ -105,13 +101,13 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     if trace_val is not None:
         transport.trace = trace_val
     if show_hex_opt is not None:
-        transport.logger.show_hex = bool(show_hex_opt)
+        transport.logger.show_hex = parse_bool(show_hex_opt)
     if show_ascii_opt is not None:
-        transport.logger.show_ascii = bool(show_ascii_opt)
+        transport.logger.show_ascii = parse_bool(show_ascii_opt)
     if show_time_opt is not None:
-        transport.logger.show_time = bool(show_time_opt)
+        transport.logger.show_time = parse_bool(show_time_opt)
     if show_len_opt is not None:
-        transport.logger.show_len = bool(show_len_opt)
+        transport.logger.show_len = parse_bool(show_len_opt)
     if max_bytes_opt is not None:
-        transport.logger.max_bytes = int(max_bytes_opt)
+        transport.logger.max_bytes = parse_int(max_bytes_opt, default=64)
     return transport

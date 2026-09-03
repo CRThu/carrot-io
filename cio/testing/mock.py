@@ -102,11 +102,11 @@ class MockGpioPin(AsyncGpioPin):
         self._edge_event.clear()
         initial = self.state
 
-        start = asyncio.get_event_loop().time()
+        start = asyncio.get_running_loop().time()
         while True:
             try:
                 if timeout is not None:
-                    elapsed = asyncio.get_event_loop().time() - start
+                    elapsed = asyncio.get_running_loop().time() - start
                     rem = timeout - elapsed
                     if rem <= 0:
                         return False
@@ -118,11 +118,13 @@ class MockGpioPin(AsyncGpioPin):
 
             self._edge_event.clear()
             current = self.state
-            if edge == "rising" and not initial and current:
+            prev = initial
+            initial = current
+            if edge == "rising" and not prev and current:
                 return True
-            if edge == "falling" and initial and not current:
+            if edge == "falling" and prev and not current:
                 return True
-            if edge == "both" and initial != current:
+            if edge == "both" and prev != current:
                 return True
 
 

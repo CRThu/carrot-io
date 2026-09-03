@@ -106,14 +106,6 @@ class SerialTransport(AsyncUartTransport):
                 pass
         self._serial = None
 
-    def _sync_cleanup(self) -> None:
-        self._is_open = False
-        if self._serial:
-            try:
-                self._serial.close()
-            except Exception:
-                pass
-
     async def _write_impl(self, data: bytes) -> int:
         if not self._serial or not self._is_open:
             raise ConnectionError("Serial port not open")
@@ -125,12 +117,10 @@ class SerialTransport(AsyncUartTransport):
             raise ConnectionError("Serial port not open")
 
         loop = asyncio.get_running_loop()
-        read_len = nbytes if nbytes > 0 else (self._serial.in_waiting or 1)
-
         while self._is_open:
             in_w = self._serial.in_waiting
             if in_w > 0:
-                count = min(read_len, in_w)
+                count = min(nbytes, in_w) if nbytes > 0 else in_w
                 return await loop.run_in_executor(None, self._serial.read, count)
             await asyncio.sleep(0.005)
 

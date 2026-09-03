@@ -4,6 +4,7 @@ Environment variable & local .env device injection with lazy singleton managemen
 from __future__ import annotations
 
 import atexit
+import inspect
 import os
 import threading
 from typing import Any
@@ -110,8 +111,6 @@ def _cleanup_all_devices() -> None:
             try:
                 if hasattr(dev_inst, "sync") and hasattr(dev_inst.sync, "close"):
                     dev_inst.sync.close()
-                elif hasattr(dev_inst, "_sync_cleanup"):
-                    dev_inst._sync_cleanup()
                 elif hasattr(dev_inst, "close"):
                     res = dev_inst.close()
                     if inspect.isawaitable(res):
@@ -177,6 +176,13 @@ class _LazyDeviceProxy:
     def __getattr__(self, name: str) -> Any:
         target = get_device("default", sync=True)
         return getattr(target, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+        else:
+            target = get_device("default", sync=True)
+            setattr(target, name, value)
 
     def __getitem__(self, name: str) -> Any:
         return get_device(name, sync=True)
