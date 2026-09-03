@@ -55,7 +55,7 @@ wheels = [
 
 [[package]]
 name = "carrot-io"
-version = "1.6.2"
+version = "1.6.3"
 source = { editable = "." }
 
 [package.optional-dependencies]
