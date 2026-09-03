@@ -24,11 +24,24 @@ class CarrotBridge(AsyncBaseTransport):
         timeout: float | None = None,
         buffer_size: int = 1024 * 1024,
         trace: bool = False,
+        borrowed: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)
         self._underlying: AsyncBaseTransport = transport
-        self._transaction_lock = asyncio.Lock()
+        self._borrowed = borrowed
+        self._transaction_lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+
+    def _get_transaction_lock(self) -> asyncio.Lock:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if self._transaction_lock is None or (self._lock_loop is not None and self._lock_loop.is_closed()):
+            self._transaction_lock = asyncio.Lock()
+            self._lock_loop = current_loop
+        return self._transaction_lock
 
     @property
     def is_open(self) -> bool:
@@ -45,8 +58,23 @@ class CarrotBridge(AsyncBaseTransport):
         if not self._is_open:
             return
         self._is_open = False
-        if self._underlying.is_open:
+        if not self._borrowed and self._underlying.is_open:
             await self._underlying.close()
+
+    def i2c(self, bus: int = 0, reg_len: int = 1, **kwargs: Any) -> Any:
+        """Create a derived I2C bridge sharing this physical CarrotBridge connection."""
+        from cio.composite.i2c import AsyncI2cBridge
+        return AsyncI2cBridge(self, bus=bus, reg_len=reg_len, borrowed=True, **kwargs)
+
+    def spi(self, bus: int = 0, cs: int = 0, **kwargs: Any) -> Any:
+        """Create a derived SPI bridge sharing this physical CarrotBridge connection."""
+        from cio.composite.spi import AsyncSpiBridge
+        return AsyncSpiBridge(self, bus=bus, cs=cs, borrowed=True, **kwargs)
+
+    def gpio(self, pin: int = 0, mode: str = "out", **kwargs: Any) -> Any:
+        """Create a derived GPIO pin bridge sharing this physical CarrotBridge connection."""
+        from cio.composite.gpio import AsyncGpioBridge
+        return AsyncGpioBridge(self, pin=pin, mode=mode, borrowed=True, **kwargs)
 
     async def _write_impl(self, data: bytes) -> int:
         return await self._underlying.write(data)
@@ -87,7 +115,7 @@ class CarrotBridge(AsyncBaseTransport):
 
         actual_timeout = timeout if timeout is not None else self.timeout
 
-        async with self._transaction_lock:
+        async with self._get_transaction_lock():
             self.logger.log_out(cmd_bytes, tag="CMD")
             await self._underlying.write(cmd_bytes, timeout=actual_timeout)
 

@@ -21,13 +21,16 @@ class AsyncGpioBridge(AsyncGpioPin):
         self,
         transport: AsyncBaseTransport | CarrotBridge,
         pin: int | str = 0,
+        borrowed: bool | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__()
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
+            self._borrowed = True if borrowed is None else borrowed
         else:
-            self._bridge = CarrotBridge(transport, **kwargs)
+            self._borrowed = False if borrowed is None else borrowed
+            self._bridge = CarrotBridge(transport, borrowed=self._borrowed, **kwargs)
         self.logger = self._bridge.logger
         self.pin = pin
 
@@ -55,7 +58,8 @@ class AsyncGpioBridge(AsyncGpioPin):
         await self._bridge.open()
 
     async def close(self) -> None:
-        await self._bridge.close()
+        if not self._borrowed:
+            await self._bridge.close()
 
     async def set_high(self) -> None:
         await self._bridge.call("IO.W", self.pin, 1)

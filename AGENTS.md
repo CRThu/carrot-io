@@ -66,14 +66,17 @@
 5. **集中式数据转换与类型安全（Single Source of Converters）**：
    - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.core.converters` 中维护**。入参统一支持 `BytesLike`（`bytes`, `bytearray`, `int`, `list[int]`）并经由 `ensure_bytes` 归一化。
    - 严禁到处手写 Ad-hoc 的散装 Hex 转换或多重 `try-except` 弱类型猜测。
-6. **热路径零开销与锁保护**：
-   - `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用控制台打印；`write` 必须受 `self._write_lock` 保护，`read` 必须受 `self._read_lock` 保护。
+6. **热路径零开销与锁的物理本质（Hardware Concurrency & Lock Discipline）**：
+   - `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用控制台打印。
+   - 底层流传输层（`AsyncStreamTransport` / `AsyncPacketTransport`）物理本质为全双工通道，仅需维护物理级的 `_write_lock` 和 `_read_lock` 防止缓冲区交错碎裂。
+   - 请求-响应级的原子事务（Request-Response Transaction）归属于协议网关层（如 `CarrotBridge._transaction_lock`），严禁将事务锁下沉污染底层全双工流。
+   - 物理硬件端口为单通道串行设备，严禁为了“迎合跨 Loop 不报错”而动态销毁重建锁破坏互斥性；锁生命周期必须在运行中保持唯一，仅在 Loop 关闭时安全重置。
 7. **默认无需保留向后兼容包袱（No Backward Compatibility by Default）**：
    - 重构收敛时，保持代码极致精炼，无需保留废弃别名和过渡胶水层。破坏性改动前显式向用户确认。
 8. **核心库零第三方顶层导入与分级探测错误（Zero-Dependency Core & Graceful Probing）**：
    - `cio.core.*` 必须仅使用 Python 标准库。第三方扩展包只能在 `cio.backends.*` 中延迟加载。
    - **扫描探测**（`cio.scan()`）：静默吞掉 `ImportError` / `OSError`，不中断主流程；
-   - **主动连接**（`cio.connect()` / `dev.open()`）：驱动缺失时必须抛出携带明确安装指引的 `DriverMissingError`（如 `PythonPackageMissingError`, `CDllMissingError`）。
+   - **主动连接**（`cio.connect()` / `dev.open()`）：驱动缺失时必须抛出携带明确安装指引的 `DriverMissingError`（优先推荐 `uv add` 工具链）。
 9. **先对齐后动手，严禁盲目修改（Discuss Before Modifying / Zero Guesswork）**：
    - 在需求存在歧义、实现方式不确定、涉及多条技术路线选型或潜在重大影响时，**严禁盲目修改核心代码或凭空猜测实现**。
    - 必须先进行充分的技术调研，梳理方案利弊与影响面，主动向用户发起讨论并达成一致共识后，方可着手实施代码。
@@ -89,3 +92,22 @@
 13. **及时暴露疑惑，严禁掩盖问题与盲目试错（Ask Early & Transparent Communication）**：
     - 遇到未解疑惑、非预期异常、硬件协议冲突或环境阻塞时，**严禁盲目乱试乱改、编写临时 Hack 补丁粉饰太平或静默吞异常掩盖问题**。
     - 必须第一时间停下，清晰梳理当前现象、核心矛盾与排查结果，主动向用户提出疑问并对齐确认。
+
+---
+
+## 4. 硬件多路复用与所有权契约（Ownership & Borrowing Protocol）
+
+1. **物理底座与逻辑信道的 1 对 N 关系**：
+   - 单一物理链路（如 `serial://COM3`）对应且仅对应一个底座实例（`SerialTransport` / `CarrotBridge`）。
+   - 上层多协议（I2C, SPI, GPIO）可基于同一个底座直接衍生：
+     ```python
+     bridge = cio.connect("serial://COM3")  # 物理 Owner
+     i2c = bridge.i2c(bus=0)                # 借用信道 (borrowed=True)
+     gpio = bridge.gpio(pin=1)              # 借用信道 (borrowed=True)
+     ```
+2. **所有权与借用生命周期契约**：
+   - **借用者（Borrower）**：调用 `i2c.close()` 或退出 `with i2c:` 时，**仅注销自身逻辑状态（`self._is_open = False`），严禁级联关闭被借用的物理底层底座**。
+   - **所有者（Owner）**：物理底座的显式 `close()`、外层 `with bridge:` 退出、或进程退出时的 `atexit` 钩子，才真正触发物理端口与操作系统句柄的释放。
+3. **汇聚点事务排他，彻底杜绝数据耦合**：
+   - 当多个协议信道同时共用同一个物理底层时，所有 ASCII 指令统一在 `CarrotBridge._transaction_lock` 处排队，**从汇聚源头杜绝指令交错撞车与回包错位**。
+

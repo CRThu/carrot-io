@@ -30,13 +30,16 @@ class AsyncI2cBridge(AsyncI2cTransport):
         reg_len: int = 1,
         timeout: float | None = None,
         trace: bool = False,
+        borrowed: bool | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, reg_len=reg_len, trace=trace)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
+            self._borrowed = True if borrowed is None else borrowed
         else:
-            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, **kwargs)
+            self._borrowed = False if borrowed is None else borrowed
+            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
         self.logger = self._bridge.logger
         self.bus = bus
 
@@ -58,7 +61,8 @@ class AsyncI2cBridge(AsyncI2cTransport):
 
     async def close(self) -> None:
         self._is_open = False
-        await self._bridge.close()
+        if not self._borrowed:
+            await self._bridge.close()
 
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:

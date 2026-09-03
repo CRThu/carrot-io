@@ -35,7 +35,7 @@ class AsyncPacketTransport(AsyncBaseTransport):
         except RuntimeError:
             current_loop = None
 
-        if self._read_lock is None or self._read_lock_loop != current_loop:
+        if self._read_lock is None or (self._read_lock_loop is not None and self._read_lock_loop.is_closed()):
             self._read_lock = asyncio.Lock()
             self._read_lock_loop = current_loop
         return self._read_lock
@@ -46,7 +46,7 @@ class AsyncPacketTransport(AsyncBaseTransport):
         except RuntimeError:
             current_loop = None
 
-        if self._write_lock is None or self._write_lock_loop != current_loop:
+        if self._write_lock is None or (self._write_lock_loop is not None and self._write_lock_loop.is_closed()):
             self._write_lock = asyncio.Lock()
             self._write_lock_loop = current_loop
         return self._write_lock

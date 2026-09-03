@@ -379,3 +379,113 @@ def test_carrot_bridge_sync_call():
         assert res == 1
 
 
+@pytest.mark.asyncio
+async def test_carrot_bridge_borrowed_ownership_and_builder_methods():
+    pipe = MockTransport()
+    bridge = CarrotBridge(pipe)
+    await bridge.open()
+    assert bridge.is_open
+
+    # Use builder methods to derive multiple logical protocol bridges
+    i2c = bridge.i2c(bus=0)
+    gpio = bridge.gpio(pin=2)
+    spi = bridge.spi(bus=0)
+
+    assert i2c._borrowed is True
+    assert gpio._borrowed is True
+    assert spi._borrowed is True
+
+    # Closing a borrowed channel must NOT close the physical bridge
+    await i2c.close()
+    assert bridge.is_open
+    assert gpio.is_open
+    assert spi.is_open
+
+    await gpio.close()
+    assert bridge.is_open
+
+    # Closing the owner bridge closes the physical pipe
+    await bridge.close()
+    assert not bridge.is_open
+    assert not pipe.is_open
+
+
+@pytest.mark.asyncio
+async def test_carrot_bridge_multiplex_operations_async():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"IO.W(1, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IO.W(1, 0)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IO.R(1)\n", b"[RETURN]: 0\n")
+    pipe.add_auto_reply(b"IIC.W(0x57, 0x10, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IIC.R(0x57, 1)\n", b"[RETURN]: 0x55\n")
+
+    bridge = CarrotBridge(pipe)
+    await bridge.open()
+
+    i2c = bridge.i2c(bus=0, reg_len=1)
+    gpio = bridge.gpio(pin=1)
+
+    # 1. GPIO 操作
+    await gpio.set_high()
+    assert b"IO.W(1, 1)\n" in pipe.tx_history
+
+    # 2. I2C 操作
+    await i2c.write(0x57, b"\x10")
+    res = await i2c.read(0x57, 1)
+    assert res == b"\x55"
+
+    # 3. 关闭 I2C，验证 GPIO 依旧可以继续操作且底层物理连接未被误杀
+    await i2c.close()
+    assert bridge.is_open
+    assert gpio.is_open
+
+    await gpio.set_low()
+    level = await gpio.read_level()
+    assert level is False
+    assert b"IO.W(1, 0)\n" in pipe.tx_history
+    assert b"IO.R(1)\n" in pipe.tx_history
+
+    # 4. 彻底关闭底座
+    await bridge.close()
+    assert not bridge.is_open
+    assert not pipe.is_open
+
+
+def test_carrot_bridge_multiplex_operations_sync():
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"IO.W(2, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IO.W(2, 0)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IIC.W(0x50, 0x20, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IIC.R(0x50, 1)\n", b"[RETURN]: 0xAA\n")
+
+    bridge = CarrotBridge(pipe)
+
+    with bridge as b:
+        assert b.is_open
+        gpio = b.gpio(pin=2)
+        i2c = b.i2c(bus=0, reg_len=1)
+
+        # 1. 同步 GPIO 操作
+        with gpio as pin:
+            pin.set_high()
+        assert b"IO.W(2, 1)\n" in pipe.tx_history
+
+        # 2. 同步 I2C 上下文
+        with i2c as dev:
+            dev.write(0x50, b"\x20")
+            val = dev.read(0x50, 1)
+            assert val == b"\xAA"
+
+        # 3. i2c 退出后，gpio 依旧可正常操作，底层串口保持连接
+        assert b.is_open
+        with gpio as pin:
+            pin.set_low()
+        assert b"IO.W(2, 0)\n" in pipe.tx_history
+
+    # 退出 bridge 后，物理底层彻底关闭
+    assert not bridge.is_open
+    assert not pipe.is_open
+
+
+
+

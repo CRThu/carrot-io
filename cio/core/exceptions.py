@@ -20,7 +20,7 @@ class PythonPackageMissingError(DriverMissingError):
     """Raised when a Python package (e.g. pyserial, pyftdi) is not installed."""
     def __init__(self, package_name: str, extra_name: str | None = None):
         extra = extra_name or package_name
-        msg = f"Python package '{package_name}' is missing. Install it via: `pip install carrot-io[{extra}]` or `uv add carrot-io --extra {extra}`"
+        msg = f"Python package '{package_name}' is missing. Install it via: `uv add \"carrot-io[{extra}]\"` (or `pip install \"carrot-io[{extra}]\"`)"
         super().__init__(msg)
         self.package_name = package_name
         self.extra_name = extra_name

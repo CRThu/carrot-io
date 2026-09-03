@@ -7,6 +7,11 @@
 ## 目录
 
 - [一、顶层入口与连接工厂 (`cio.connect`)](#一顶层入口与连接工厂-cioconnect)
+  - [1. URL Scheme 语法全景表](#1-cioconnecturl-str-kwargs---asyncbasetransport)
+  - [2. `cio.scan` 设备静默探测](#2-cioscankind-str--none--none---listdict)
+  - [3. 极简 DSL 单例与环境变量注入 (`from cio import dev`)](#3-极简-dsl-单例与环境变量注入-from-cio-import-dev)
+  - [4. 快捷构造函数](#4-快捷构造函数)
+  - [5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）](#5-单物理底座多路复用i2c--spi--gpio-共用同一串口)
 - [二、同步与异步双模调用范式](#二同步与异步双模调用范式)
 - [三、总线传输契约与接口方法](#三总线传输契约与接口方法)
   - [1. 基础传输接口 (`AsyncBaseTransport` / `SyncTransportWrapper`)](#1-基础传输接口-asyncbasetransport--synctransportwrapper)
@@ -80,6 +85,30 @@ dev["power"].write("VSET 3.3\n")
 - `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
+
+### 5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
+
+当一块测试底板通过同一个物理串口（如 `COM3`）同时提供 I2C、SPI 与 GPIO 功能时，推荐通过底座的衍生构造器创建逻辑信道：
+
+```python
+import cio
+
+# 1. 打开单一物理底座 (物理 Owner)
+bridge = cio.connect("serial://COM3?baud=2000000")
+
+# 2. 从底座直接衍生各协议逻辑信道 (借用模式 borrowed=True，底层自动共享串口与事务排他锁)
+i2c = bridge.i2c(bus=0, reg_len=2)
+gpio = bridge.gpio(pin=1)
+
+with i2c:
+    i2c.write_reg(0x57, 0x00, [0x01, 0x02])
+# i2c 退出后仅注销自身逻辑状态，底座 bridge 与 gpio 依旧保持正常通信！
+
+gpio.set_high()
+
+# 3. 最终统一关闭物理底座
+bridge.close()
+```
 
 ---
 
