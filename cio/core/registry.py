@@ -20,14 +20,24 @@ class BackendInfo:
     scan_fn: Callable[[], list[dict[str, Any]]]
 
 
+@dataclass
+class BridgeInfo:
+    bus: str
+    name: str
+    bridge_cls: Type[Any]
+    is_default: bool = False
+
+
 class BackendRegistry:
     """
-    Registry for transport backends with silent probing and graceful degradation.
+    Registry for transport backends and composite protocol bridges with silent probing.
     """
 
     def __init__(self) -> None:
         self._backends: dict[str, BackendInfo] = {}
         self._scheme_map: dict[str, str] = {}
+        self._bridges: dict[str, dict[str, Type[Any]]] = {}
+        self._default_bridges: dict[str, str] = {}
 
     def register(
         self,
@@ -100,6 +110,90 @@ class BackendRegistry:
             except Exception:
                 pass
 
+        return results
+
+    def register_bridge(
+        self,
+        bus: str,
+        name: str | list[str] | tuple[str, ...],
+        bridge_cls: Type[Any],
+        is_default: bool = False,
+    ) -> None:
+        """
+        Register a protocol bridge implementation for a target bus (e.g. 'i2c', 'spi', 'gpio').
+
+        :param bus: Target bus protocol name, e.g. 'i2c', 'spi', 'gpio'.
+        :param name: Bridge identifier or list of aliases, e.g. 'cb' or ['cb', 'carrot'].
+        :param bridge_cls: Bridge class taking (base_transport, **kwargs).
+        :param is_default: Whether this bridge should be the default fallback when bridge name is omitted in URL.
+        """
+        bus_key = bus.lower()
+        names = [name] if isinstance(name, str) else list(name)
+        if not names:
+            raise ValueError("At least one bridge name must be specified.")
+
+        if bus_key not in self._bridges:
+            self._bridges[bus_key] = {}
+
+        for idx, n in enumerate(names):
+            name_key = n.lower()
+            self._bridges[bus_key][name_key] = bridge_cls
+            if (is_default and idx == 0) or bus_key not in self._default_bridges:
+                self._default_bridges[bus_key] = name_key
+
+    def set_default_bridge(self, bus: str, name: str) -> None:
+        """Set default bridge for a given bus."""
+        bus_key = bus.lower()
+        name_key = name.lower()
+        if bus_key not in self._bridges or name_key not in self._bridges[bus_key]:
+            available = list(self._bridges.get(bus_key, {}).keys())
+            raise InvalidUrlError(
+                f"Cannot set unknown bridge '{name}' as default for bus '{bus}'. Available: {available}"
+            )
+        self._default_bridges[bus_key] = name_key
+
+    def get_bridge_cls(self, bus: str, name: str | None = None) -> Type[Any]:
+        """
+        Get bridge class for a given bus and optional bridge name.
+        If bridge name is omitted, returns the default bridge for this bus.
+        """
+        bus_key = bus.lower()
+        if bus_key not in self._bridges or not self._bridges[bus_key]:
+            raise InvalidUrlError(f"No protocol bridge registered for bus '{bus}'.")
+
+        if name is None or not str(name).strip():
+            default_name = self._default_bridges.get(bus_key)
+            if not default_name or default_name not in self._bridges[bus_key]:
+                raise InvalidUrlError(f"No default bridge configured for bus '{bus}'.")
+            return self._bridges[bus_key][default_name]
+
+        name_key = name.lower()
+        if name_key not in self._bridges[bus_key]:
+            available = list(self._bridges[bus_key].keys())
+            raise InvalidUrlError(
+                f"Unsupported or unregistered bridge '{name}' for bus '{bus}'. Available: {available}"
+            )
+        return self._bridges[bus_key][name_key]
+
+    def list_bridges(self, bus: str | None = None) -> list[BridgeInfo]:
+        """
+        List registered bridges, optionally filtered by bus.
+        """
+        results: list[BridgeInfo] = []
+        target_buses = [bus.lower()] if bus else list(self._bridges.keys())
+        for b in target_buses:
+            if b not in self._bridges:
+                continue
+            default_name = self._default_bridges.get(b)
+            for n, cls in self._bridges[b].items():
+                results.append(
+                    BridgeInfo(
+                        bus=b,
+                        name=n,
+                        bridge_cls=cls,
+                        is_default=(n == default_name),
+                    )
+                )
         return results
 
 

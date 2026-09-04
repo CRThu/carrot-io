@@ -8,11 +8,12 @@
 
 - [一、顶层入口与连接工厂 (`cio.connect`)](#一顶层入口与连接工厂-cioconnect)
   - [1. URL Scheme 语法全景表](#1-cioconnecturl-str-kwargs---asyncbasetransport)
-  - [2. `cio.scan` 设备静默探测](#2-cioscankind-str--none--none---listdict)
-  - [3. 极简 DSL 单例与环境变量注入 (`from cio import dev`)](#3-极简-dsl-单例与环境变量注入-from-cio-import-dev)
-  - [4. 快捷构造函数](#4-快捷构造函数)
-  - [5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）](#5-单物理底座多路复用i2c--spi--gpio-共用同一串口)
-  - [6. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发](#6-沁恒-ch347-高速-usb-多协议硬件底座与双串口并发)
+  - [2. 协议桥注册与扩展 (`cio.register_bridge`)](#2-协议桥注册与扩展-cioregister_bridge)
+  - [3. `cio.scan` 设备静默探测](#3-cioscankind-str--none--none---listdict)
+  - [4. 极简 DSL 单例与环境变量注入 (`from cio import dev`)](#4-极简-dsl-单例与环境变量注入-from-cio-import-dev)
+  - [5. 快捷构造函数](#5-快捷构造函数)
+  - [6. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）](#6-单物理底座多路复用i2c--spi--gpio-共用同一串口)
+  - [7. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发](#7-沁恒-ch347-高速-usb-多协议硬件底座与双串口并发)
 - [二、同步与异步双模调用范式](#二同步与异步双模调用范式)
 - [三、总线传输契约与接口方法](#三总线传输契约与接口方法)
   - [1. 基础传输接口 (`AsyncBaseTransport` / `SyncTransportWrapper`)](#1-基础传输接口-asyncbasetransport--synctransportwrapper)
@@ -43,22 +44,47 @@
 | **原生 UDP** | `udp://192.168.1.100:5025` | 异步 UDP 报文 Socket |
 | **FTDI 控制器** | `ftdi://ftdi:232h/1?baud=115200` | PyFTDI 适配器 |
 | **CH347 底座** | `ch347://0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
-| **CH347 I2C** | `i2c+ch347://0?frequency=400000` | CH347 硬件 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
-| **CH347 SPI** | `spi+ch347://0?frequency=15000000&mode=0&cs=0` | CH347 硬件 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
-| **CH347 GPIO** | `gpio+ch347://0?pin=3` | CH347 硬件 GPIO 引脚控制，参数：`pin=0~7` |
-| **I2C 协议桥** | `i2c+serial://COM3?baud=2000000&reg_len=2` | 串口上的 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `bus=0` |
-| **SPI 协议桥** | `spi+serial://COM3?baud=2000000&cs=0` | 串口上的 CarrotBridge SPI 全双工主机，参数：`cs=0`, `bus=0` |
-| **GPIO 协议桥** | `gpio+serial://COM3?pin=1` | 串口上的 CarrotBridge GPIO 引脚控制 |
+| **CH347 原生 I2C** | `i2c+ch347://0?frequency=400000` | CH347 硬件原生 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
+| **CH347 原生 SPI** | `spi+ch347://0?frequency=15000000&mode=0&cs=0` | CH347 硬件原生 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
+| **CH347 原生 GPIO**| `gpio+ch347://0?pin=3` | CH347 硬件原生 GPIO 引脚控制，参数：`pin=0~7` |
+| **I2C 协议桥 (标准)** | `i2c+cb+serial://COM3?baud=2000000&reg_len=2` | 串口上的 CarrotBridge (`cb`) I2C 主机（亦支持缺省 `i2c+serial://` 自动回退） |
+| **SPI 协议桥 (标准)** | `spi+cb+serial://COM3?baud=2000000&cs=0` | 串口上的 CarrotBridge (`cb`) SPI 全双工主机，参数：`cs=0`, `bus=0` |
+| **GPIO 协议桥 (标准)**| `gpio+cb+serial://COM3?pin=1` | 串口上的 CarrotBridge (`cb`) GPIO 引脚控制 |
+| **自定义协议桥** | `i2c+myproto+serial://COM3` | 通过 `cio.register_bridge` 注入的自研或开源协议桥 |
 | **RPC 硬件代理** | `rpc+tcp://192.168.1.50:8000/COM1?baud=115200` | 跨网络机器远程硬件透明代理 |
 
-> **通用参数：**
-> - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
-> - `timeout=2.0`：统一设置默认 I/O 超时（秒）。
+> **复合 URL 规范与硬件优先机制：**
+> - **标准三段式**：`{bus}+{bridge}+{transport}://{address}`（如 `i2c+cb+serial://COM3`），精准定位总线、协议桥与物理信道。
+> - **两段式省略**：`{bus}+{transport}://{address}`。底层硬件若原生支持对应总线（如 `i2c+ch347://0`）则优先直通硬件原生接口；若无原生总线（如 `i2c+serial://COM3`）则自动回退到已注册的默认协议桥（默认即为 `cb`）。
+> - **通用参数：**
+>   - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
+>   - `timeout=2.0`：统一设置默认 I/O 超时（秒）。
 
-### 2. `cio.scan(kind: str | None = None) -> list[dict]`
+### 2. 协议桥注册与扩展 (`cio.register_bridge`)
+
+支持三方或自研协议（如 Modbus, Firmata, 自定义帧等）以插拔方式注册为通用总线桥：
+
+```python
+import cio
+from cio.core.base import AsyncBaseTransport
+
+class MyI2cBridge(AsyncBaseTransport):
+    def __init__(self, transport: AsyncBaseTransport, **kwargs):
+        super().__init__()
+        self.transport = transport
+        # 初始化自定义协议帧解析逻辑...
+
+# 注册协议桥（支持单名称或别名列表，可设为默认）
+cio.register_bridge("i2c", ["myproto", "mp"], MyI2cBridge, is_default=False)
+
+# 即插即用连接
+dev = cio.connect("i2c+myproto+serial://COM3?baud=115200")
+```
+
+### 3. `cio.scan(kind: str | None = None) -> list[dict]`
 静默探测系统当前可用的物理硬件与串口设备，无可用设备时静默返回空列表。
 
-### 3. 极简 DSL 单例与环境变量注入 (`from cio import dev`)
+### 4. 极简 DSL 单例与环境变量注入 (`from cio import dev`)
 
 为支持极简测试脚本与领域特定语言（DSL）调用，`cio` 提供开箱即用的模块级惰性单例 `dev` 与本级目录 `.env` 环境变量注入：
 
@@ -84,7 +110,7 @@ dev["power"].write("VSET 3.3\n")
 > - **惰性连接**：`from cio import dev` 在导入阶段零副作用，只有首次调用方法时才建立硬件连接。
 > - **`atexit` 自动安全回收**：脚本正常结束或异常崩溃退出时，底层自动安全关闭串口与物理连接，彻底杜绝操作系统端口死锁。
 
-### 4. 快捷构造函数
+### 5. 快捷构造函数
 - `cio.serial(port="COM1", baud=115200, **kwargs)`
 - `cio.tcp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
@@ -92,7 +118,7 @@ dev["power"].write("VSET 3.3\n")
 - `cio.ch347(index=0, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
 
-### 5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
+### 6. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
 
 当一块测试底板通过同一个物理串口（如 `COM3`）同时提供 I2C、SPI 与 GPIO 功能时，推荐通过底座的衍生构造器创建逻辑信道：
 
@@ -116,7 +142,7 @@ gpio.set_high()
 bridge.close()
 ```
 
-### 6. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发
+### 7. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发
 
 沁恒 CH347 是一颗 USB 2.0 High-Speed（480Mbps）多协议转换芯片。在 Mode 1 / Mode 2 复合功能模式下，同时向操作系统枚举出：
 - **双独立高速硬件串口**（如 `COM12`、`COM13`，走标准 CDC / VCP 串口驱动，支持高达 9Mbps+ 波特率）；

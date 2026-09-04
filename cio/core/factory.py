@@ -17,11 +17,16 @@ def parse_url(url: str) -> tuple[str, str, dict[str, Any]]:
     Parse a transport URL into (scheme, target_address, options_dict).
     Example: 'serial://COM3?baud=115200' -> ('serial', 'COM3', {'baud': '115200'})
     """
-    parsed = urllib.parse.urlparse(url)
-    if not parsed.scheme:
+    if "://" not in url:
         raise InvalidUrlError(f"URL missing scheme: '{url}'")
 
-    scheme = parsed.scheme.lower()
+    scheme_part, rest = url.split("://", 1)
+    if not scheme_part.strip():
+        raise InvalidUrlError(f"URL missing scheme: '{url}'")
+
+    scheme = scheme_part.lower()
+    parsed = urllib.parse.urlparse(f"dummy://{rest}")
+
     if parsed.netloc:
         address = parsed.netloc + parsed.path
     else:
@@ -55,37 +60,17 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     max_bytes_opt = merged_kwargs.pop("max_bytes", None)
 
     if "+" in scheme:
-        parts = scheme.split("+", 1)
-        high_scheme, base_scheme = parts[0], parts[1]
-        sub_url = f"{base_scheme}://{address}"
+        try:
+            import cio.composite  # noqa: F401
+        except ImportError:
+            pass
 
-        if high_scheme == "gpio":
-            base_transport = connect(sub_url, **merged_kwargs)
-            if hasattr(base_transport, "gpio"):
-                transport: AsyncBaseTransport = base_transport.gpio(**merged_kwargs)
-            else:
-                from cio.composite.gpio import AsyncGpioBridge
+        parts = scheme.split("+")
 
-                transport = AsyncGpioBridge(base_transport, **merged_kwargs)
-        elif high_scheme == "i2c":
-            base_transport = connect(sub_url, **merged_kwargs)
-            if hasattr(base_transport, "i2c"):
-                transport = base_transport.i2c(**merged_kwargs)
-            else:
-                from cio.composite.i2c import AsyncI2cBridge
-
-                transport = AsyncI2cBridge(base_transport, **merged_kwargs)
-        elif high_scheme == "spi":
-            base_transport = connect(sub_url, **merged_kwargs)
-            if hasattr(base_transport, "spi"):
-                transport = base_transport.spi(**merged_kwargs)
-            else:
-                from cio.composite.spi import AsyncSpiBridge
-
-                transport = AsyncSpiBridge(base_transport, **merged_kwargs)
-        elif high_scheme == "rpc":
+        if parts[0] == "rpc":
             from cio.composite.rpc import RpcRemoteTransport
 
+            base_scheme = "+".join(parts[1:])
             if "/" in address:
                 host_port, target_path = address.split("/", 1)
             else:
@@ -101,8 +86,27 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
             target_url = f"{base_scheme}://{target_path}{target_query}"
 
             transport = RpcRemoteTransport(target_url=target_url, host=r_host, port=r_port, **merged_kwargs)
+        elif len(parts) == 2:
+            bus, base_scheme = parts[0], parts[1]
+            sub_url = f"{base_scheme}://{address}"
+            base_transport = connect(sub_url, **merged_kwargs)
+
+            if hasattr(base_transport, bus) and callable(getattr(base_transport, bus)):
+                transport = getattr(base_transport, bus)(**merged_kwargs)
+            else:
+                bridge_cls = registry.get_bridge_cls(bus)
+                transport = bridge_cls(base_transport, **merged_kwargs)
+        elif len(parts) == 3:
+            bus, bridge_name, base_scheme = parts[0], parts[1], parts[2]
+            sub_url = f"{base_scheme}://{address}"
+            base_transport = connect(sub_url, **merged_kwargs)
+
+            bridge_cls = registry.get_bridge_cls(bus, bridge_name)
+            transport = bridge_cls(base_transport, **merged_kwargs)
         else:
-            raise InvalidUrlError(f"Unsupported high-level bridge in scheme: '{high_scheme}'")
+            raise InvalidUrlError(
+                f"Malformed composite scheme '{scheme}'. Expected format: '{{bus}}+{{transport}}' or '{{bus}}+{{bridge}}+{{transport}}'."
+            )
     else:
         info = registry.get_backend_info(scheme)
         transport = info.factory_cls(address=address, **merged_kwargs)  # type: ignore

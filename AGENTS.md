@@ -11,7 +11,7 @@
 ## Project Structure & Navigation
 
 ```text
- 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.check()
+ 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.register_bridge() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.check()
  2. 协议桥层:    CarrotBridge / AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
  3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
  4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport

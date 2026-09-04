@@ -4,6 +4,7 @@ cio (carrot-io) - A minimalist, zero-dependency, graceful-degradation hardware a
 from __future__ import annotations
 
 import cio.backends  # Ensure backends register with global registry # noqa: F401
+import cio.composite  # Ensure default bridges register with global registry # noqa: F401
 
 from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
 from cio.core.converters import BytesLike, ensure_bytes
@@ -62,6 +63,23 @@ def scan(kind: str | None = None) -> list[dict]:
     Scan available hardware/network transport devices gracefully.
     """
     return registry.scan(kind=kind)
+
+
+def register_bridge(
+    bus: str,
+    name: str | list[str] | tuple[str, ...],
+    bridge_cls: type,
+    is_default: bool = False,
+) -> None:
+    """
+    Register a protocol bridge implementation for a target bus (e.g. 'i2c', 'spi', 'gpio').
+
+    :param bus: Target bus name, e.g. 'i2c', 'spi', 'gpio'.
+    :param name: Bridge identifier or list of aliases, e.g. 'cb' or ['cb', 'carrot'].
+    :param bridge_cls: Bridge class taking (base_transport, **kwargs).
+    :param is_default: Whether this bridge should be default fallback when bridge name is omitted.
+    """
+    registry.register_bridge(bus=bus, name=name, bridge_cls=bridge_cls, is_default=is_default)
 
 
 def tcp(
@@ -133,6 +151,7 @@ __all__ = [
     # Factory & Scan
     "connect",
     "scan",
+    "register_bridge",
     "tcp",
     "udp",
     "serial",
