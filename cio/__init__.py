@@ -114,6 +114,17 @@ def ftdi(
     return FtdiUartTransport(url=url, baud=baud, timeout=timeout, **kwargs)
 
 
+def ch347(
+    index: int = 0,
+    timeout: float | None = None,
+    **kwargs,
+) -> AsyncBaseTransport:
+    """Create a CH347 multi-protocol device baseboard transport instance."""
+    from cio.backends.ch347 import Ch347DeviceTransport
+
+    return Ch347DeviceTransport(index=index, timeout=timeout, **kwargs)
+
+
 __version__ = "1.7.0"
 
 __all__ = [
@@ -126,6 +137,7 @@ __all__ = [
     "udp",
     "serial",
     "ftdi",
+    "ch347",
     "start_rpc_server",
     # Core Abstractions
     "AsyncBaseTransport",

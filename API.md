@@ -12,6 +12,7 @@
   - [3. 极简 DSL 单例与环境变量注入 (`from cio import dev`)](#3-极简-dsl-单例与环境变量注入-from-cio-import-dev)
   - [4. 快捷构造函数](#4-快捷构造函数)
   - [5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）](#5-单物理底座多路复用i2c--spi--gpio-共用同一串口)
+  - [6. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发](#6-沁恒-ch347-高速-usb-多协议硬件底座与双串口并发)
 - [二、同步与异步双模调用范式](#二同步与异步双模调用范式)
 - [三、总线传输契约与接口方法](#三总线传输契约与接口方法)
   - [1. 基础传输接口 (`AsyncBaseTransport` / `SyncTransportWrapper`)](#1-基础传输接口-asyncbasetransport--synctransportwrapper)
@@ -41,6 +42,10 @@
 | **原生 TCP** | `tcp://192.168.1.100:5025` | 异步 TCP Socket 流，参数：`timeout=`, `buffer_size=` |
 | **原生 UDP** | `udp://192.168.1.100:5025` | 异步 UDP 报文 Socket |
 | **FTDI 控制器** | `ftdi://ftdi:232h/1?baud=115200` | PyFTDI 适配器 |
+| **CH347 底座** | `ch347://0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
+| **CH347 I2C** | `i2c+ch347://0?frequency=400000` | CH347 硬件 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
+| **CH347 SPI** | `spi+ch347://0?frequency=15000000&mode=0&cs=0` | CH347 硬件 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
+| **CH347 GPIO** | `gpio+ch347://0?pin=3` | CH347 硬件 GPIO 引脚控制，参数：`pin=0~7` |
 | **I2C 协议桥** | `i2c+serial://COM3?baud=2000000&reg_len=2` | 串口上的 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `bus=0` |
 | **SPI 协议桥** | `spi+serial://COM3?baud=2000000&cs=0` | 串口上的 CarrotBridge SPI 全双工主机，参数：`cs=0`, `bus=0` |
 | **GPIO 协议桥** | `gpio+serial://COM3?pin=1` | 串口上的 CarrotBridge GPIO 引脚控制 |
@@ -84,6 +89,7 @@ dev["power"].write("VSET 3.3\n")
 - `cio.tcp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, **kwargs)`
+- `cio.ch347(index=0, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
 
 ### 5. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
@@ -108,6 +114,35 @@ gpio.set_high()
 
 # 3. 最终统一关闭物理底座
 bridge.close()
+```
+
+### 6. 沁恒 CH347 高速 USB 多协议硬件底座与双串口并发
+
+沁恒 CH347 是一颗 USB 2.0 High-Speed（480Mbps）多协议转换芯片。在 Mode 1 / Mode 2 复合功能模式下，同时向操作系统枚举出：
+- **双独立高速硬件串口**（如 `COM12`、`COM13`，走标准 CDC / VCP 串口驱动，支持高达 9Mbps+ 波特率）；
+- **专有硬件接口**（走 `CH347DLLA64.DLL` / `CH347DLL.DLL` 驱动，支持 1MHz I2C、60MHz SPI 与 8 路 GPIO）。
+
+#### ① 独立端点并发通信契约
+两组硬件串口走 USB CDC 独立端点，I2C/SPI/GPIO 走专有 Vendor Bulk 独立端点。**两者的物理信道在芯片内部完全物理隔离**。`carrot-io` 支持在 Python 中开启两个串口进行全双工数据吞吐的同时，并发高速读取 I2C/SPI 传感器，两者零串扰、零相互阻塞。
+
+#### ② CH347 专属调用范式
+```python
+import cio
+
+# 范式 A：直接使用复合 URL Scheme 打开专有总线（内部自动管理底座句柄生命周期）
+with cio.connect("i2c+ch347://0?frequency=400000") as i2c:
+    addrs = i2c.scan()                         # 物理总线硬件级 ACK 扫描
+    raw = i2c.read_reg(0x44, 0x2400, nbytes=6) # 硬件原子 Repeated-Start 读寄存器
+
+# 范式 B：底座 1 对 N 多路复用借用（I2C + SPI + GPIO 共享同一物理句柄与排他锁）
+with cio.ch347(0) as bridge:
+    i2c = bridge.i2c(frequency=400000)
+    spi = bridge.spi(frequency=15000000, mode=0, cs=0)
+    pin = bridge.gpio(pin=3)
+
+    i2c.write(0x44, [0x24, 0x00])
+    spi.transfer([0x9F, 0x00, 0x00, 0x00])
+    pin.set_high()
 ```
 
 ---
@@ -544,4 +579,42 @@ with cio.connect("tcp://192.168.1.100:5025?trace=on") as dev:
     proto.write("*IDN?")
     idn = proto.read(timeout=2.0)
     print("Instrument IDN:", idn)
+```
+
+### 模板 4：沁恒 CH347 高速 I2C 传感器采集与双串口并发通信
+```python
+import asyncio
+import cio
+
+async def main():
+    # 1. 打开 CH347 硬件 I2C
+    i2c = cio.connect("i2c+ch347://0?frequency=400000")
+    await i2c.open()
+
+    # 扫描总线在线从机 (精准过滤空地址)
+    devices = await i2c.scan()
+    print("Online I2C devices:", [hex(a) for a in devices])
+
+    # 2. 读取 SHT30 温湿度传感器 (触发高精度测量命令 0x2400，读取 6 字节数据)
+    await i2c.write(0x44, [0x24, 0x00])
+    await asyncio.sleep(0.05)  # 等待传感器 ADC 转换
+    raw = await i2c.read(0x44, 6)
+
+    temp_raw = (raw[0] << 8) | raw[1]
+    humi_raw = (raw[3] << 8) | raw[4]
+    temp = -45 + 175 * (temp_raw / 65535.0)
+    humi = 100 * (humi_raw / 65535.0)
+    print(f"SHT30 Temperature: {temp:.2f} °C, Humidity: {humi:.2f} %RH")
+
+    # 3. 此时双串口（如 COM12 与 COM13）可同时进行全双工收发，零相互阻塞
+    async with cio.connect("serial://COM12?baud=115200") as u1, \
+               cio.connect("serial://COM13?baud=115200") as u2:
+        await u1.write(b"HELLO_CH347_UART")
+        echo = await u2.read_exact(16)
+        print("UART Loopback Echo:", echo)
+
+    await i2c.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```

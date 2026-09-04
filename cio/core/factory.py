@@ -61,19 +61,28 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
 
         if high_scheme == "gpio":
             base_transport = connect(sub_url, **merged_kwargs)
-            from cio.composite.gpio import AsyncGpioBridge
+            if hasattr(base_transport, "gpio"):
+                transport: AsyncBaseTransport = base_transport.gpio(**merged_kwargs)
+            else:
+                from cio.composite.gpio import AsyncGpioBridge
 
-            transport: AsyncBaseTransport = AsyncGpioBridge(base_transport, **merged_kwargs)
+                transport = AsyncGpioBridge(base_transport, **merged_kwargs)
         elif high_scheme == "i2c":
             base_transport = connect(sub_url, **merged_kwargs)
-            from cio.composite.i2c import AsyncI2cBridge
+            if hasattr(base_transport, "i2c"):
+                transport = base_transport.i2c(**merged_kwargs)
+            else:
+                from cio.composite.i2c import AsyncI2cBridge
 
-            transport = AsyncI2cBridge(base_transport, **merged_kwargs)
+                transport = AsyncI2cBridge(base_transport, **merged_kwargs)
         elif high_scheme == "spi":
             base_transport = connect(sub_url, **merged_kwargs)
-            from cio.composite.spi import AsyncSpiBridge
+            if hasattr(base_transport, "spi"):
+                transport = base_transport.spi(**merged_kwargs)
+            else:
+                from cio.composite.spi import AsyncSpiBridge
 
-            transport = AsyncSpiBridge(base_transport, **merged_kwargs)
+                transport = AsyncSpiBridge(base_transport, **merged_kwargs)
         elif high_scheme == "rpc":
             from cio.composite.rpc import RpcRemoteTransport
 
@@ -98,16 +107,17 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
         info = registry.get_backend_info(scheme)
         transport = info.factory_cls(address=address, **merged_kwargs)  # type: ignore
 
-    if trace_val is not None:
+    if hasattr(transport, "trace") and trace_val is not None:
         transport.trace = trace_val
-    if show_hex_opt is not None:
-        transport.logger.show_hex = parse_bool(show_hex_opt)
-    if show_ascii_opt is not None:
-        transport.logger.show_ascii = parse_bool(show_ascii_opt)
-    if show_time_opt is not None:
-        transport.logger.show_time = parse_bool(show_time_opt)
-    if show_len_opt is not None:
-        transport.logger.show_len = parse_bool(show_len_opt)
-    if max_bytes_opt is not None:
-        transport.logger.max_bytes = parse_int(max_bytes_opt, default=64)
+    if hasattr(transport, "logger"):
+        if show_hex_opt is not None:
+            transport.logger.show_hex = parse_bool(show_hex_opt)
+        if show_ascii_opt is not None:
+            transport.logger.show_ascii = parse_bool(show_ascii_opt)
+        if show_time_opt is not None:
+            transport.logger.show_time = parse_bool(show_time_opt)
+        if show_len_opt is not None:
+            transport.logger.show_len = parse_bool(show_len_opt)
+        if max_bytes_opt is not None:
+            transport.logger.max_bytes = parse_int(max_bytes_opt, default=64)
     return transport

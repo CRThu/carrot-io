@@ -11,16 +11,16 @@
 ## Project Structure & Navigation
 
 ```text
- 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.check()
+ 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.check()
  2. 协议桥层:    CarrotBridge / AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
  3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
- 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / VisaTransport
- 5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / C DLLs (visa32)
+ 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport
+ 5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / CH347 DLL / C DLLs (visa32)
 ```
 
 - `cio/core/`: 核心基类（`base`）、总线契约（`stream`, `packet`, `i2c`, `spi`, `gpio`, `uart`）、环境变量单例代理（`env`）、集中类型转换（`converters`）、无界缓冲（`buffer`）、热路径内存日志（`logger`）、工厂与静默探测（`factory`, `registry`）、分级异常（`exceptions`）、协议绑定（`codec`, `protocol`）
 - `cio/composite/`: 硬件协议桥（`carrotbridge`、`i2c` / `spi` / `gpio` 总线桥）、跨机代理（`rpc`）
-- `cio/backends/`: 延迟加载硬件适配器（`socket`, `serial`, `ftdi`, `visa`）
+- `cio/backends/`: 延迟加载硬件适配器（`socket`, `serial`, `ftdi`, `ch347`, `visa`）
 - `cio/testing/`: 测试组件（`mock` 设备、`verify` 纯粹断言子系统：`check`, `require`, `verify`, `VerificationSession`）
 
 ## Build & Test Commands
