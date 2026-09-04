@@ -143,7 +143,7 @@ def ch347(
     return Ch347DeviceTransport(index=index, timeout=timeout, **kwargs)
 
 
-__version__ = "1.8.0"
+__version__ = "1.9.0"
 
 __all__ = [
     # Singleton & Env Injection
