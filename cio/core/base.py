@@ -10,7 +10,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
+from cio.core.exceptions import ReadTimeoutError, UnsupportedCapabilityError, WriteTimeoutError
 from cio.core.logger import IoLogger, LogEntry
 
 if TYPE_CHECKING:
@@ -64,6 +64,10 @@ class SyncTransportWrapper:
                 self._thread = None
 
     @property
+    def capabilities(self) -> frozenset[str]:
+        return getattr(self._async, "capabilities", frozenset())
+
+    @property
     def is_open(self) -> bool:
         return bool(getattr(self._async, "is_open", False))
 
@@ -97,6 +101,9 @@ class SyncTransportWrapper:
             show_len=show_len,
             max_bytes=max_bytes,
         )
+
+    def clear_history(self) -> None:
+        self._async.clear_history()
 
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._async, name)
@@ -173,6 +180,11 @@ class AsyncBaseTransport(abc.ABC):
         return self._sync_wrapper
 
     @property
+    def capabilities(self) -> frozenset[str]:
+        """Set of capabilities natively or logically supported by this transport."""
+        return frozenset()
+
+    @property
     def is_open(self) -> bool:
         return self._is_open
 
@@ -219,6 +231,10 @@ class AsyncBaseTransport(abc.ABC):
             max_bytes=max_bytes,
         )
 
+    def clear_history(self) -> None:
+        """Clear in-memory log entries in logger."""
+        self.logger.clear()
+
     def bind(self, codec: BaseCodec) -> ProtocolTransport:
         """Bind a Codec to return a high-level ProtocolTransport."""
         from cio.core.protocol import ProtocolTransport
@@ -237,4 +253,13 @@ class AsyncBaseTransport(abc.ABC):
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         return self.sync.__exit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name: str) -> Any:
+        if name in ("i2c", "spi", "gpio", "uart", "stream", "packet"):
+            caps = sorted(self.capabilities)
+            raise UnsupportedCapabilityError(
+                f"Transport '{self.__class__.__name__}' does not support '{name}'. "
+                f"Supported capabilities: {caps}"
+            )
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 

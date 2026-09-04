@@ -104,11 +104,17 @@ data = dev.read_reg(0x57, 0xFFB0, 1)
 
 # 2. 具名多设备下标访问 (读取 CIO_DEVICE_POWER)
 dev["power"].write("VSET 3.3\n")
+
+# 3. 主动清理历史与连接复位
+dev.clear_history()             # 清空当前设备内存追踪日志
+dev.close()                     # 关闭设备并从全局池注销，便于重置重连
+cio.close_all_devices()         # 批量回收关闭所有单例
 ```
 
 > **安全与生命周期保障：**
 > - **惰性连接**：`from cio import dev` 在导入阶段零副作用，只有首次调用方法时才建立硬件连接。
 > - **`atexit` 自动安全回收**：脚本正常结束或异常崩溃退出时，底层自动安全关闭串口与物理连接，彻底杜绝操作系统端口死锁。
+> - **状态守恒**：`dev.close()` 与 `cio.close_device()` 显式关闭设备后自动从缓存池注销，重新调用立即透明创建全新干净连接。
 
 ### 5. 快捷构造函数
 - `cio.serial(port="COM1", baud=115200, **kwargs)`
@@ -243,6 +249,7 @@ asyncio.run(main())
 | `write()` | `dev.write(data: BytesLike, timeout=None) -> int` | 写入原始数据（线程/协程并发安全保护） |
 | `read()` | `dev.read(nbytes: int = -1, timeout=None) -> bytes` | 读取原始字节流数据 |
 | `query()` | `dev.query(cmd: BytesLike, delay=0.0, timeout=None) -> bytes` | 发送命令、等待 `delay` 秒后回读响应 |
+| `capabilities` | `dev.capabilities -> frozenset[str]` | 显式能力契约声明（如 `{"stream", "uart"}` 或 `{"i2c", "spi", "gpio"}`） |
 | `flush()` | `dev.flush()` | 清空内部接收缓冲区 |
 | `history()` | `dev.history(limit=100) -> list[LogEntry]` | 获取内存中的历史收发日志条目 |
 | `dump_history()` | `dev.dump_history(limit=20, color=False, ...) -> str` | 获取格式化后的 TX/RX 通信 Hex 文本流 |
@@ -535,6 +542,7 @@ TransportError (基类)
  ├── DriverMissingError (驱动或物理依赖缺失)
  │    ├── PythonPackageMissingError (缺少 pyserial / pyftdi 等 pip 包)
  │    └── CDllMissingError (缺少 visa32.dll 等 C 动态链接库)
+ ├── UnsupportedCapabilityError (调用不支持的总线能力，同时派生自 AttributeError)
  ├── ConnectionError (连接建立失败)
  │    ├── ConnectTimeoutError (连接超时)
  │    └── ConnectionRefusedError (连接被拒绝)

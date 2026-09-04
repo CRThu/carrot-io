@@ -27,3 +27,7 @@ class AsyncUartTransport(AsyncStreamTransport):
         self.stopbits = stopbits
         self.bytesize = bytesize
         self.rtscts = rtscts
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"stream", "uart"})

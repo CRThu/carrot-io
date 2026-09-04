@@ -247,6 +247,26 @@ def test_sync_wrapper_setattr_passthrough():
     assert dev.sync.timeout == 7.5
 
 
+@pytest.mark.asyncio
+async def test_stream_transport_query_atomic_lock():
+    """Verify query() uses atomic transaction lock and completes without interleaving."""
+    mock_st = MockTransport()
+    await mock_st.open()
+
+    mock_st.auto_replies = {
+        b"CMD1\n": b"RESP1\n",
+        b"CMD2\n": b"RESP2\n",
+    }
+
+    r1, r2 = await asyncio.gather(
+        mock_st.query(b"CMD1\n", timeout=1.0),
+        mock_st.query(b"CMD2\n", timeout=1.0),
+    )
+    assert r1 == b"RESP1\n"
+    assert r2 == b"RESP2\n"
+    await mock_st.close()
+
+
 
 
 

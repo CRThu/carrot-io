@@ -148,6 +148,7 @@ class IoLogger:
         show_time: bool = True,
         show_len: bool = True,
         max_bytes: int = 64,
+        max_entries: int | None = None,
     ) -> None:
         self._entries: list[LogEntry] = []
         self.trace = trace
@@ -156,6 +157,7 @@ class IoLogger:
         self.show_time = show_time
         self.show_len = show_len
         self.max_bytes = max_bytes
+        self.max_entries = max_entries
         self._listeners: list[Callable[[LogEntry], None]] = []
 
     def configure(
@@ -167,6 +169,7 @@ class IoLogger:
         show_time: bool | None = None,
         show_len: bool | None = None,
         max_bytes: int | None = None,
+        max_entries: int | None = None,
     ) -> IoLogger:
         """Batch configure logger formatting and trace options."""
         if trace is not None:
@@ -181,7 +184,13 @@ class IoLogger:
             self.show_len = show_len
         if max_bytes is not None:
             self.max_bytes = max_bytes
+        if max_entries is not None:
+            self.max_entries = max_entries
         return self
+
+    def clear(self) -> None:
+        """Clear all stored log entries from memory."""
+        self._entries.clear()
 
     def add_listener(self, callback: Callable[[LogEntry], None]) -> None:
         """Register a callback for new LogEntry events."""
@@ -195,6 +204,8 @@ class IoLogger:
 
     def _emit(self, entry: LogEntry) -> None:
         self._entries.append(entry)
+        if self.max_entries is not None and len(self._entries) > self.max_entries:
+            del self._entries[: len(self._entries) - self.max_entries]
         if self.trace:
             line = entry.format_line(
                 color=sys.stdout.isatty(),

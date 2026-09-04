@@ -26,6 +26,10 @@ class AsyncI2cTransport(AsyncBaseTransport):
         super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)
         self.default_reg_len = int(reg_len)
 
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"i2c"})
+
     @abc.abstractmethod
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         """Read nbytes from specified I2C device address."""

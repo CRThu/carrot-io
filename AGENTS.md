@@ -44,7 +44,7 @@ uv run bump-my-version bump patch           # 小版本升级
 1. **纯异步核心 + 通用同步适配（Pure Async Core & Universal Sync）**：
    - 内部 100% 纯协程实现 (`async def`)，**严禁编写专属同步类**。
    - 外部同步统一通过 `dev.sync`（由 `SyncTransportWrapper` 驱动后台专用 Loop 调度）；`with dev:` 自动进入同步视图，`async with dev:` 保持原生异步。
-   - `AsyncGpioPin` 为独立抽象基类，同样挂载 `.sync` 包装器。
+   - `AsyncGpioPin` 归队统一继承 `AsyncBaseTransport`，天然享有全套调度、上下文管理、日志与历史缓冲。
 2. **环境单例与声明式注入（`cio.dev` Singleton & Injection）**：
    - `from cio import dev` 提供惰性初始化的全局单例代理。自动读取当前工作区 `.env` 或环境变量 `CIO_DEVICE`（或具名设备 `CIO_DEVICE_<NAME>`）。
    - 默认同步调用（`dev.write(...)`, `dev.i2c(...)`, `dev["power"].write(...)`），支持 `close_all_devices()` 安全回收。
@@ -58,7 +58,7 @@ uv run bump-my-version bump patch           # 小版本升级
 5. **严禁危险的软件伪兜底（Zero Dangerous Software Fallbacks）**：
    - 严禁在缺少硬件支持时使用软件业务读写（如用 `read(addr, 1)` 轮询 112 个地址模拟 I2C scan）充当默认兜底。这会破坏从机硬件状态机且因超时累积造成长时间卡死。硬件不支持的功能直接显式抛异常。
 6. **集中式数据转换（Single Source of Converters）**：
-   - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.core.converters` 中维护**。入参统一支持 `BytesLike`（`bytes | bytearray | int | list[int] | tuple[int, ...]`）并经由 `ensure_bytes` 归一化。严禁在类中挂载冗余静态别名或散装 Hex 转换。
+   - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.core.converters` 中维护**。入参统一支持 `BytesLike`（`bytes | bytearray | int | list[int] | tuple[int, ...] target`）并经由 `ensure_bytes` 归一化。严禁在类中挂载冗余静态别名或散装 Hex 转换。
 7. **热路径零开销与锁的物理本质（Hardware Concurrency & Lock Discipline）**：
    - `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用控制台打印。
    - 底层流传输层（全双工通道）仅维护物理级的 `_write_lock` 和 `_read_lock` 防止缓冲区交错碎裂。
@@ -67,3 +67,6 @@ uv run bump-my-version bump patch           # 小版本升级
    - **1 对 N 架构**：单一物理链路（如 `serial://COM3`）对应唯一底座实例（`SerialTransport` / `CarrotBridge`）。上层总线（I2C/SPI/GPIO）通过 `bridge.i2c()`、`bridge.spi()`、`bridge.gpio()` 借用信道衍生。
    - **所有权生命周期**：借用者调用 `close()` 或退出上下文时，**仅注销自身逻辑状态（`borrowed=True`），严禁级联关闭底层物理底座**；物理底座的显式 `close()` 或外层上下文退出才释放物理句柄。
    - **汇聚点排他**：多协议信道共用物理底层时，所有 ASCII 指令统一在 `CarrotBridge._transaction_lock` 处排队，从汇聚源头杜绝指令交错撞车与回包错位。
+9. **显式能力自省与开箱即用（Capabilities Introspection & Auto-Ready Resilience）**：
+   - **显式能力契约**：淘汰 `hasattr` 盲猜与伪实现。所有传输实体必须声明不可变集合 `capabilities: frozenset[str]`（如 `frozenset({"stream", "uart"})`）。调用不支持的能力触发强类型的 `UnsupportedCapabilityError`（双重继承自 `TransportError` 和 `AttributeError`，兼顾强指引与鸭子类型容错）。
+   - **开箱即用与自然就绪**：衍生子通道遵从最自然的开箱即用习惯（`if not self.is_open: await self.open()` 自动就绪），摒弃跨层私有状态追踪与人工拦截补丁，返璞归真，安全轻量。

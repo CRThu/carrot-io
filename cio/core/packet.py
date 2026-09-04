@@ -29,6 +29,10 @@ class AsyncPacketTransport(AsyncBaseTransport):
         self._write_lock: asyncio.Lock | None = None
         self._write_lock_loop: asyncio.AbstractEventLoop | None = None
 
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"packet"})
+
     def _get_read_lock(self) -> asyncio.Lock:
         try:
             current_loop = asyncio.get_running_loop()

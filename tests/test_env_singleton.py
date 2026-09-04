@@ -157,3 +157,30 @@ def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
     assert dev.raw.timeout == 4.2
 
 
+def test_device_pool_close_device_and_clear_history(monkeypatch):
+    """Verify close_device() / dev.close() and clear_history() manage singleton pool cleanly."""
+    monkeypatch.setenv("CIO_DEVICE", "mock://dut_lifecycle")
+    from cio.core.env import _ACTIVE_DEVICES, close_device, clear_history
+
+    reset_devices()
+
+    # Access device to create in pool
+    dev.write(b"INIT_CMD")
+    assert "default" in _ACTIVE_DEVICES
+    assert len(dev.history()) >= 1
+
+    # Clear history via facade
+    dev.clear_history()
+    assert len(dev.history()) == 0
+
+    # Explicit close_device unregisters it
+    dev.close()
+    assert "default" not in _ACTIVE_DEVICES
+
+    # Re-accessing recreates clean instance
+    dev.write(b"NEW_SESSION")
+    assert "default" in _ACTIVE_DEVICES
+    close_all_devices()
+    assert "default" not in _ACTIVE_DEVICES
+
+

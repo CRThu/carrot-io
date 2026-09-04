@@ -8,6 +8,7 @@ from typing import Any
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
 from cio.core.converters import BytesLike, ensure_bytes, parse_hex_bytes, parse_int
+from cio.core.exceptions import ConnectionError
 from cio.core.gpio import AsyncGpioPin
 from cio.core.spi import AsyncSpiTransport
 
@@ -64,8 +65,6 @@ class AsyncSpiBridge(AsyncSpiTransport):
     async def write(self, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
-
-
         raw_data = ensure_bytes(data)
         if self.cs_pin:
             await self.cs_pin.set_low()
@@ -81,7 +80,6 @@ class AsyncSpiBridge(AsyncSpiTransport):
     async def read(self, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-
         if self.cs_pin:
             await self.cs_pin.set_low()
 
@@ -96,7 +94,6 @@ class AsyncSpiBridge(AsyncSpiTransport):
     async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-
         raw_tx = ensure_bytes(tx_data)
         if self.cs_pin:
             await self.cs_pin.set_low()
@@ -113,7 +110,11 @@ class AsyncSpiBridge(AsyncSpiTransport):
         """
         Configure SPI Mode using CPOL (0/1) and CPHA (0/1).
         """
+        if not self.is_open:
+            await self.open()
         await self._bridge.call("SPI.MODE", cpol, cpha)
 
     async def config_speed(self, speed_hz: int) -> None:
+        if not self.is_open:
+            await self.open()
         await self._bridge.call("SPI.SPEED", speed_hz)

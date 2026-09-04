@@ -87,7 +87,7 @@ class SerialTransport(AsyncUartTransport):
                     parity=self.parity,
                     stopbits=self.stopbits,
                     rtscts=self.rtscts,
-                    timeout=0,
+                    timeout=0.05,
                 ),
             )
             self._is_open = True
@@ -118,11 +118,13 @@ class SerialTransport(AsyncUartTransport):
 
         loop = asyncio.get_running_loop()
         while self._is_open:
+            # 优先读取硬件或驱动已就绪的缓冲区数据
             in_w = self._serial.in_waiting
-            if in_w > 0:
-                count = min(nbytes, in_w) if nbytes > 0 else in_w
-                return await loop.run_in_executor(None, self._serial.read, count)
-            await asyncio.sleep(0.005)
+            count = min(nbytes, in_w) if in_w > 0 else (1 if nbytes <= 0 else min(nbytes, 4096))
+            # 由内核串口驱动阻塞唤醒，杜绝 200Hz 协程 sleep 忙等轮询
+            chunk = await loop.run_in_executor(None, self._serial.read, count)
+            if chunk:
+                return chunk
 
         return b""
 

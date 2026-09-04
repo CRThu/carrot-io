@@ -39,6 +39,10 @@ class NativeDeviceWithI2c(AsyncBaseTransport):
         self.address = address
         self.native_i2c_called = False
 
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"i2c"})
+
     def i2c(self, **kwargs) -> AsyncBaseTransport:
         self.native_i2c_called = True
         return MockTransport(address="native_i2c")

@@ -15,6 +15,7 @@ from cio.core.converters import (
     parse_int_list,
     to_hex_str,
 )
+from cio.core.exceptions import ConnectionError
 from cio.core.i2c import AsyncI2cTransport
 
 
@@ -70,7 +71,6 @@ class AsyncI2cBridge(AsyncI2cTransport):
         res = await self._bridge.call("IIC.R", to_hex_str(addr), nbytes, timeout=timeout)
         return parse_hex_bytes(res, nbytes=nbytes)
 
-
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
@@ -88,4 +88,6 @@ class AsyncI2cBridge(AsyncI2cTransport):
         return parse_int_list(res)
 
     async def config_speed(self, speed_hz: int) -> None:
+        if not self.is_open:
+            await self.open()
         await self._bridge.call("IIC.SPEED", speed_hz)

@@ -9,6 +9,7 @@ from typing import Any, Literal
 from cio.composite.carrotbridge import CarrotBridge
 from cio.core.base import AsyncBaseTransport
 from cio.core.converters import parse_bool
+from cio.core.exceptions import ConnectionError
 from cio.core.gpio import AsyncGpioPin
 
 
@@ -54,6 +55,10 @@ class AsyncGpioBridge(AsyncGpioPin):
     def trace(self, value: bool) -> None:
         self._bridge.trace = bool(value)
 
+    async def _ensure_open(self) -> None:
+        if not self.is_open:
+            await self.open()
+
     async def open(self) -> None:
         await self._bridge.open()
 
@@ -62,12 +67,15 @@ class AsyncGpioBridge(AsyncGpioPin):
             await self._bridge.close()
 
     async def set_high(self) -> None:
+        await self._ensure_open()
         await self._bridge.call("IO.W", self.pin, 1)
 
     async def set_low(self) -> None:
+        await self._ensure_open()
         await self._bridge.call("IO.W", self.pin, 0)
 
     async def toggle(self) -> None:
+        await self._ensure_open()
         level = await self.read_level()
         if level:
             await self.set_low()
@@ -75,6 +83,7 @@ class AsyncGpioBridge(AsyncGpioPin):
             await self.set_high()
 
     async def read_level(self) -> bool:
+        await self._ensure_open()
         res = await self._bridge.call("IO.R", self.pin)
         return parse_bool(res)
 
@@ -82,6 +91,7 @@ class AsyncGpioBridge(AsyncGpioPin):
         """
         Configure GPIO Mode: "IN", "OUT", "OUT,PP", "OUT,OD".
         """
+        await self._ensure_open()
         mode_str = mode
         if isinstance(mode, int):
             mapping = {0: "IN", 1: "OUT,PP", 2: "OUT,OD"}
@@ -92,6 +102,7 @@ class AsyncGpioBridge(AsyncGpioPin):
         """
         Configure GPIO Pull: "NONE", "UP", "DOWN" or 0, 1, 2.
         """
+        await self._ensure_open()
         pull_str = pull
         if isinstance(pull, int):
             mapping = {0: "NONE", 1: "UP", 2: "DOWN"}

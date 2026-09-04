@@ -99,17 +99,25 @@ def parse_bool(res: Any) -> bool:
     return bool(res)
 
 
-def parse_hex_bytes(res: Any, nbytes: int | None = None) -> bytes:
+def parse_hex_bytes(res: Any, nbytes: int | None = None, default: bytes | None = None) -> bytes:
     """
     将十六进制字符串、整数或原始数据反序列化为指定长度 bytes。
+    当遇到无法解析的非法 Hex 数据时：
+    - 若显式指定了 default 则返回 default；
+    - 否则显式抛出 ValueError/TypeError，严禁静默吞异常伪造 b"" 假空值。
     """
+    if res is None or res == "":
+        return default if default is not None else b""
+
     if isinstance(res, (bytes, bytearray)):
         data = bytes(res)
         return data[:nbytes] if nbytes is not None else data
 
     if isinstance(res, int):
         if res < 0:
-            return b""
+            if default is not None:
+                return default
+            raise ValueError(f"Cannot parse negative integer {res} as unsigned hex bytes")
         if nbytes is not None:
             try:
                 return res.to_bytes(nbytes, byteorder="big")
@@ -121,6 +129,8 @@ def parse_hex_bytes(res: Any, nbytes: int | None = None) -> bytes:
 
     if isinstance(res, str):
         hex_str = res.strip()
+        if not hex_str:
+            return default if default is not None else b""
         if hex_str.startswith(("0x", "0X")):
             hex_str = hex_str[2:]
         if len(hex_str) % 2 != 0:
@@ -128,10 +138,14 @@ def parse_hex_bytes(res: Any, nbytes: int | None = None) -> bytes:
         try:
             data = bytes.fromhex(hex_str)
             return data[:nbytes] if nbytes is not None else data
-        except ValueError:
-            return b""
+        except ValueError as err:
+            if default is not None:
+                return default
+            raise ValueError(f"Invalid hex string {res!r}: {err}") from err
 
-    return b""
+    if default is not None:
+        return default
+    raise TypeError(f"Unsupported type for parse_hex_bytes: {type(res).__name__}")
 
 
 def parse_int_list(res: Any) -> list[int]:

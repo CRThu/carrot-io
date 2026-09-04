@@ -224,4 +224,39 @@ def test_io_logger_color_and_msg_formatting():
     assert logger.dump() == "(No log entries recorded)"
 
 
+def test_io_logger_max_entries_sliding_window():
+    """Verify optional max_entries maintains a sliding window while default is unbounded."""
+    logger_unbounded = IoLogger()
+    assert logger_unbounded.max_entries is None
+    for i in range(200):
+        logger_unbounded.log_out(f"TX{i}".encode("utf-8"))
+    assert len(logger_unbounded.history(500)) == 200
+
+    logger_bounded = IoLogger(max_entries=5)
+    for i in range(12):
+        logger_bounded.log_out(f"DATA_{i}".encode("utf-8"))
+    entries = logger_bounded.history(20)
+    assert len(entries) == 5
+    assert entries[-1].data == b"DATA_11"
+    assert entries[0].data == b"DATA_7"
+
+
+def test_transport_and_sync_clear_history():
+    """Verify clear_history on transport and its sync wrapper."""
+    from cio.testing.mock import MockTransport
+
+    mock_t = MockTransport()
+    mock_t.sync.write(b"HELLO")
+    assert len(mock_t.history()) == 1
+
+    mock_t.sync.clear_history()
+    assert len(mock_t.history()) == 0
+
+    mock_t.logger.log_out(b"WORLD")
+    assert len(mock_t.history()) == 1
+
+    mock_t.clear_history()
+    assert len(mock_t.history()) == 0
+
+
 

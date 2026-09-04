@@ -30,6 +30,12 @@ class AsyncStreamTransport(AsyncBaseTransport):
         self._read_lock_loop: asyncio.AbstractEventLoop | None = None
         self._write_lock: asyncio.Lock | None = None
         self._write_lock_loop: asyncio.AbstractEventLoop | None = None
+        self._query_lock: asyncio.Lock | None = None
+        self._query_lock_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"stream"})
 
     def _get_read_lock(self) -> asyncio.Lock:
         try:
@@ -52,6 +58,17 @@ class AsyncStreamTransport(AsyncBaseTransport):
             self._write_lock = asyncio.Lock()
             self._write_lock_loop = current_loop
         return self._write_lock
+
+    def _get_query_lock(self) -> asyncio.Lock:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if self._query_lock is None or (self._query_lock_loop is not None and self._query_lock_loop.is_closed()):
+            self._query_lock = asyncio.Lock()
+            self._query_lock_loop = current_loop
+        return self._query_lock
 
 
     async def _write_impl(self, data: bytes) -> int:
@@ -110,11 +127,12 @@ class AsyncStreamTransport(AsyncBaseTransport):
             return self.fifo.read(nbytes)
 
     async def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:
-        """Write a command, wait delay if specified, and return response."""
-        await self.write(cmd, timeout=timeout)
-        if delay > 0:
-            await asyncio.sleep(delay)
-        return await self.read(-1, timeout=timeout)
+        """Write a command, wait delay if specified, and return response (atomic transaction)."""
+        async with self._get_query_lock():
+            await self.write(cmd, timeout=timeout)
+            if delay > 0:
+                await asyncio.sleep(delay)
+            return await self.read(-1, timeout=timeout)
 
     async def read_exact(self, nbytes: int, timeout: float | None = None) -> bytes:
         """Read exactly `nbytes` bytes."""

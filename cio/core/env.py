@@ -122,6 +122,33 @@ def _cleanup_all_devices() -> None:
 
 
 
+def close_device(name: str = "default") -> None:
+    """关闭指定的单例设备并从活动池中注销，便于重新连接或释放物理句柄。"""
+    norm_key = (name or "default").strip().lower()
+    with _DEVICE_LOCK:
+        if norm_key in _ACTIVE_DEVICES:
+            dev_inst = _ACTIVE_DEVICES.pop(norm_key)
+            try:
+                if hasattr(dev_inst, "sync") and hasattr(dev_inst.sync, "close"):
+                    dev_inst.sync.close()
+                elif hasattr(dev_inst, "close"):
+                    res = dev_inst.close()
+                    if inspect.isawaitable(res):
+                        res.close()
+            except Exception:
+                pass
+
+
+def clear_history(name: str = "default") -> None:
+    """清空指定单例设备的内存日志与历史追踪。"""
+    norm_key = (name or "default").strip().lower()
+    with _DEVICE_LOCK:
+        dev_inst = _ACTIVE_DEVICES.get(norm_key)
+        if dev_inst is not None:
+            if hasattr(dev_inst, "logger") and hasattr(dev_inst.logger, "clear"):
+                dev_inst.logger.clear()
+
+
 def close_all_devices() -> None:
     """显式关闭并清空所有当前已初始化的单例设备。"""
     _cleanup_all_devices()
@@ -210,6 +237,14 @@ class _LazyDeviceProxy:
         if hasattr(target, "__aexit__"):
             return await target.__aexit__(exc_type, exc_val, exc_tb)
         return None
+
+    def close(self) -> None:
+        """关闭默认设备并从单例池中注销。"""
+        close_device("default")
+
+    def clear_history(self) -> None:
+        """清空默认设备的内存日志。"""
+        clear_history("default")
 
     def __repr__(self) -> str:
         with _DEVICE_LOCK:

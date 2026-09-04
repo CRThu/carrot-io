@@ -91,7 +91,7 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
             sub_url = f"{base_scheme}://{address}"
             base_transport = connect(sub_url, **merged_kwargs)
 
-            if hasattr(base_transport, bus) and callable(getattr(base_transport, bus)):
+            if bus in getattr(base_transport, "capabilities", ()) and hasattr(base_transport, bus) and callable(getattr(base_transport, bus)):
                 transport = getattr(base_transport, bus)(**merged_kwargs)
             else:
                 bridge_cls = registry.get_bridge_cls(bus)

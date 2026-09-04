@@ -88,7 +88,9 @@ def test_parse_hex_bytes():
     assert parse_hex_bytes(0x123456, nbytes=1) == b"\x12\x34\x56"
     assert parse_hex_bytes(b"\x12\x34\x56", nbytes=2) == b"\x12\x34"
     assert parse_hex_bytes(None) == b""
-    assert parse_hex_bytes("invalid_hex") == b""
+    assert parse_hex_bytes("invalid_hex", default=b"") == b""
+    with pytest.raises(ValueError):
+        parse_hex_bytes("invalid_hex")
 
 
 def test_parse_int_list():
@@ -118,5 +120,7 @@ def test_converters_extended_edge_cases():
     assert parse_int_list(b"0x50, 0x57") == [0x50, 0x57]
 
     # Negative int in parse_hex_bytes
-    assert parse_hex_bytes(-1) == b""
+    assert parse_hex_bytes(-1, default=b"") == b""
+    with pytest.raises(ValueError):
+        parse_hex_bytes(-1)
 

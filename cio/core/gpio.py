@@ -6,23 +6,31 @@ from __future__ import annotations
 import abc
 from typing import Any, Literal
 
-from cio.core.base import SyncTransportWrapper
+from cio.core.base import AsyncBaseTransport
 
 
-class AsyncGpioPin(abc.ABC):
+class AsyncGpioPin(AsyncBaseTransport):
     """
     Abstract Base Class for GPIO pin control.
     """
 
-    def __init__(self) -> None:
-        self._sync_wrapper: SyncTransportWrapper | None = None
+    def __init__(
+        self,
+        timeout: float | None = None,
+        trace: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(timeout=timeout, trace=trace, **kwargs)
 
     @property
-    def sync(self) -> SyncTransportWrapper:
-        """Universal synchronous wrapper for this GPIO pin."""
-        if self._sync_wrapper is None:
-            self._sync_wrapper = SyncTransportWrapper(self)
-        return self._sync_wrapper
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"gpio"})
+
+    async def open(self) -> None:
+        self._is_open = True
+
+    async def close(self) -> None:
+        self._is_open = False
 
 
     @abc.abstractmethod

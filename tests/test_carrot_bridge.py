@@ -7,7 +7,7 @@ from cio.composite.carrotbridge import CarrotBridge
 from cio.composite.gpio import AsyncGpioBridge
 from cio.composite.i2c import AsyncI2cBridge
 from cio.composite.spi import AsyncSpiBridge
-from cio.core.exceptions import ReadTimeoutError
+from cio.core.exceptions import IOOperationError, ReadTimeoutError
 from cio.testing.mock import MockGpioPin, MockTransport
 
 
@@ -485,6 +485,28 @@ def test_carrot_bridge_multiplex_operations_sync():
     # 退出 bridge 后，物理底层彻底关闭
     assert not bridge.is_open
     assert not pipe.is_open
+
+
+@pytest.mark.asyncio
+async def test_carrot_bridge_fast_fail_on_error():
+    """CarrotBridge must immediately raise IOOperationError on [ERROR]: response without waiting for timeout."""
+    pipe = MockTransport()
+    pipe.add_auto_reply(
+        b"IIC.W(0x50, 0x01)\n",
+        b"[ERROR]: Slave NACK detected\n",
+    )
+    bridge = CarrotBridge(pipe, timeout=2.0)
+    await bridge.open()
+
+    start_t = asyncio.get_running_loop().time()
+    with pytest.raises(IOOperationError) as excinfo:
+        await bridge.call("IIC.W", "0x50", b"\x01")
+    elapsed = asyncio.get_running_loop().time() - start_t
+
+    assert elapsed < 0.5
+    assert "Slave NACK detected" in str(excinfo.value)
+    assert "CarrotBridge call 'IIC.W' failed on device" in str(excinfo.value)
+    await bridge.close()
 
 
 

@@ -208,7 +208,7 @@ class Ch347Device:
         return Ch347SpiTransport(self, cs=cs, frequency=frequency, mode=mode, borrowed=True, **kwargs)
 
     def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioPin:
-        return Ch347GpioPin(self, pin=pin, **kwargs)
+        return Ch347GpioPin(self, pin=pin, borrowed=True, **kwargs)
 
 # --- 顶层物理底座传输抽象 (供 cio.connect("ch347://0") 使用) ---
 
@@ -230,6 +230,10 @@ class Ch347DeviceTransport(AsyncBaseTransport):
         idx_str = str(address).strip("/") if address else str(index)
         self.dev_index = parse_int(idx_str, default=0)
         self.device = Ch347Device.get_or_create(self.dev_index)
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"i2c", "spi", "gpio", "uart"})
 
     @property
     def is_open(self) -> bool:
@@ -287,8 +291,12 @@ class Ch347I2cTransport(AsyncI2cTransport):
     def is_open(self) -> bool:
         return self.device.is_open and self._is_open
 
+    async def _ensure_open(self) -> None:
+        if not self.is_open:
+            await self.open()
+
     async def open(self) -> None:
-        if self._is_open:
+        if self._is_open and self.device.is_open:
             return
         await self.device.open()
 
@@ -317,8 +325,7 @@ class Ch347I2cTransport(AsyncI2cTransport):
             await self.device.close()
 
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
-        if not self._is_open:
-            await self.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         # I2C 读操作：写入从机读地址 (addr << 1 | 0x01)，读取 nbytes
@@ -343,8 +350,7 @@ class Ch347I2cTransport(AsyncI2cTransport):
             return data
 
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
-        if not self._is_open:
-            await self.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         raw = ensure_bytes(data)
@@ -379,8 +385,7 @@ class Ch347I2cTransport(AsyncI2cTransport):
         """
         Hardware-optimized atomic Repeated-Start register read via single CH347StreamI2C transaction.
         """
-        if not self._is_open:
-            await self.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         needed_len = (reg.bit_length() + 7) // 8 or 1
@@ -414,8 +419,7 @@ class Ch347I2cTransport(AsyncI2cTransport):
         Scan I2C bus for responsive 7-bit slave addresses (0x08 to 0x77).
         Uses native hardware 1-byte standard address probe (START -> [addr_W] -> ACK -> STOP).
         """
-        if not self._is_open:
-            await self.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         active_addresses: list[int] = []
@@ -505,7 +509,7 @@ class Ch347SpiTransport(AsyncSpiTransport):
         return self.device.is_open and self._is_open
 
     async def open(self) -> None:
-        if self._is_open:
+        if self._is_open and self.device.is_open:
             return
         await self.device.open()
 
@@ -548,6 +552,10 @@ class Ch347SpiTransport(AsyncSpiTransport):
             raise IOOperationError(f"Failed to initialize CH347 SPI (mode={self.mode}, freq={self.frequency})")
         self._is_open = True
 
+    async def _ensure_open(self) -> None:
+        if not self.is_open:
+            await self.open()
+
     async def close(self) -> None:
         if not self._is_open:
             return
@@ -556,8 +564,7 @@ class Ch347SpiTransport(AsyncSpiTransport):
             await self.device.close()
 
     async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:
-        if not self._is_open:
-            await self.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         raw_tx = ensure_bytes(tx_data)
@@ -607,8 +614,12 @@ class Ch347GpioPin(AsyncGpioPin):
     def is_open(self) -> bool:
         return self.device.is_open and self._is_open
 
+    async def _ensure_open(self) -> None:
+        if not self.is_open:
+            await self.open()
+
     async def open(self) -> None:
-        if self._is_open:
+        if self._is_open and self.device.is_open:
             return
         await self.device.open()
         self._is_open = True
@@ -621,8 +632,7 @@ class Ch347GpioPin(AsyncGpioPin):
             await self.device.close()
 
     async def set_high(self) -> None:
-        if not self.device.is_open:
-            await self.device.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         loop = asyncio.get_running_loop()
@@ -635,8 +645,7 @@ class Ch347GpioPin(AsyncGpioPin):
             self._state = True
 
     async def set_low(self) -> None:
-        if not self.device.is_open:
-            await self.device.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         loop = asyncio.get_running_loop()
@@ -655,8 +664,7 @@ class Ch347GpioPin(AsyncGpioPin):
             await self.set_high()
 
     async def read_level(self) -> bool:
-        if not self.device.is_open:
-            await self.device.open()
+        await self._ensure_open()
         assert self.device.dll is not None
 
         loop = asyncio.get_running_loop()

@@ -44,8 +44,15 @@ from cio.core.exceptions import (
     FrameChecksumError,
     InvalidUrlError,
     DeviceConfigError,
+    UnsupportedCapabilityError,
 )
-from cio.core.env import dev
+from cio.core.env import (
+    clear_history,
+    close_all_devices,
+    close_device,
+    dev,
+    reset_devices,
+)
 from cio.core.factory import connect
 from cio.core.registry import registry
 from cio.testing.mock import MockTransport, MockGpioPin
@@ -196,10 +203,15 @@ __all__ = [
     "FrameChecksumError",
     "InvalidUrlError",
     "DeviceConfigError",
+    "UnsupportedCapabilityError",
     "IoLogger",
     "LogEntry",
     "BytesLike",
     "ensure_bytes",
+    "close_device",
+    "close_all_devices",
+    "reset_devices",
+    "clear_history",
     # Testing
     "MockTransport",
     "MockGpioPin",

@@ -11,8 +11,12 @@ from cio.core.converters import BytesLike, ensure_bytes
 
 class AsyncSpiTransport(AsyncBaseTransport):
     """
-    Abstract Base Class for SPI bus transports.
+    Abstract Base Class for SPI master transports.
     """
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"spi"})
 
     @abc.abstractmethod
     async def transfer(self, tx_data: BytesLike, timeout: float | None = None) -> bytes:

@@ -8,7 +8,7 @@ from typing import Any
 
 from cio.core.base import AsyncBaseTransport
 from cio.core.converters import format_arg
-from cio.core.exceptions import ReadTimeoutError
+from cio.core.exceptions import IOOperationError, ReadTimeoutError
 from cio.core.stream import AsyncStreamTransport
 
 
@@ -32,6 +32,10 @@ class CarrotBridge(AsyncBaseTransport):
         self._borrowed = borrowed
         self._transaction_lock: asyncio.Lock | None = None
         self._lock_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"i2c", "spi", "gpio"})
 
     def _get_transaction_lock(self) -> asyncio.Lock:
         try:
@@ -147,5 +151,9 @@ class CarrotBridge(AsyncBaseTransport):
                     self.logger.log_in(line, tag="RETURN")
                     raw_val = line_str[len("[RETURN]:"):].strip()
                     return self._parse_return_val(raw_val)
+                elif line_str.startswith("[ERROR]:"):
+                    self.logger.log_in(line, tag="ERROR")
+                    err_msg = line_str[len("[ERROR]:"):].strip()
+                    raise IOOperationError(f"CarrotBridge call '{func}' failed on device: {err_msg}")
                 else:
                     self.logger.log_in(line, tag="MSG")

@@ -88,3 +88,8 @@ class InvalidUrlError(TransportError, ValueError):
 class DeviceConfigError(TransportError):
     """Raised when a required device configuration or environment variable is missing."""
     pass
+
+
+class UnsupportedCapabilityError(TransportError, AttributeError):
+    """Raised when a requested hardware capability or bus is not supported by the transport."""
+    pass

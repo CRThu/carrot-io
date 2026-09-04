@@ -241,6 +241,7 @@ async def test_ch347_i2c_operations_mocked():
             await i2c_test.close()
 
         i2c = device.i2c(frequency=400_000)
+        await i2c.open()
 
         # 1. 异步写
         written = await i2c.write(0x50, [0x01, 0x02, 0x03])
@@ -348,6 +349,7 @@ async def test_ch347_spi_operations_mocked():
             await s.close()
 
         spi = device.spi(cs=0, frequency=15_000_000, mode=0)
+        await spi.open()
 
         # 空数据传输
         assert await spi.transfer(b"") == b""
@@ -499,6 +501,7 @@ async def test_ch347_gpio_failures():
     mock_dll.CH347GPIO_Set.return_value = False
     with patch("cio.backends.ch347._load_ch347_dll", return_value=mock_dll):
         pin = device.gpio(pin=2)
+        await pin.open()
         with pytest.raises(IOOperationError):
             await pin.set_high()
         with pytest.raises(IOOperationError):
@@ -508,5 +511,6 @@ async def test_ch347_gpio_failures():
     mock_dll.CH347GPIO_Get.return_value = False
     with patch("cio.backends.ch347._load_ch347_dll", return_value=mock_dll):
         pin = device.gpio(pin=2)
+        await pin.open()
         with pytest.raises(IOOperationError):
             await pin.read_level()
