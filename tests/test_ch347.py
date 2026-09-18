@@ -86,17 +86,17 @@ def test_ch347_url_factory_parsing():
     assert isinstance(base, Ch347DeviceTransport)
     assert base.dev_index == 0
 
-    i2c = cio.connect("i2c+ch347://0?frequency=400000")
+    i2c = cio.connect("i2c://0?transport=ch347&frequency=400000")
     assert isinstance(i2c, Ch347I2cTransport)
     assert i2c.frequency == 400000
 
-    spi = cio.connect("spi+ch347://0?frequency=15000000&mode=0&cs=1")
+    spi = cio.connect("spi://0?transport=ch347&frequency=15000000&mode=0&cs=1")
     assert isinstance(spi, Ch347SpiTransport)
     assert spi.frequency == 15000000
     assert spi.mode == 0
     assert spi.cs == 1
 
-    gpio = cio.connect("gpio+ch347://0?pin=4")
+    gpio = cio.connect("gpio://0?transport=ch347&pin=4")
     assert isinstance(gpio, Ch347GpioPin)
     assert gpio.pin == 4
 

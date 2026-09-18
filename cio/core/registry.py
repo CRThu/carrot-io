@@ -80,6 +80,11 @@ class BackendRegistry:
             raise InvalidUrlError(f"Unsupported or unregistered transport scheme: '{scheme}'")
         return self._backends[backend_name]
 
+    def has_backend(self, name_or_scheme: str) -> bool:
+        """Check whether a backend is registered by name or scheme."""
+        backend_name = self._scheme_map.get(name_or_scheme.lower(), name_or_scheme.lower())
+        return backend_name in self._backends
+
     def scan(self, kind: str | None = None) -> list[dict[str, Any]]:
         """
         Scan available devices across backends.
@@ -174,6 +179,15 @@ class BackendRegistry:
                 f"Unsupported or unregistered bridge '{name}' for bus '{bus}'. Available: {available}"
             )
         return self._bridges[bus_key][name_key]
+
+    def has_bus(self, bus: str) -> bool:
+        """Check whether a bus protocol is registered."""
+        return bus.lower() in self._bridges
+
+    def has_bridge(self, bus: str, name: str) -> bool:
+        """Check whether a specific bridge is registered under a bus protocol."""
+        bus_key = bus.lower()
+        return bus_key in self._bridges and name.lower() in self._bridges[bus_key]
 
     def list_bridges(self, bus: str | None = None) -> list[BridgeInfo]:
         """

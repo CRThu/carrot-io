@@ -88,14 +88,22 @@ def resolve_device_url(name: str = "default") -> str:
         raise DeviceConfigError(
             "Default device is not configured. "
             "Please set 'CIO_DEVICE' in your environment or local .env file "
-            '(e.g. CIO_DEVICE="i2c+serial://COM3?baud=2000000&reg_len=2").'
+            '(e.g. CIO_DEVICE="i2c://COM3?reg_len=2").'
         )
 
-    # 具名多设备检索
-    env_key = f"CIO_DEVICE_{norm_name.upper()}"
-    url = os.environ.get(env_key)
+    # 具名多设备检索 (支持 CIO_DEVICE_{NAME} 与 CIO_{NAME})
+    upper_name = norm_name.upper()
+    env_key = f"CIO_DEVICE_{upper_name}"
+    url = os.environ.get(env_key) or os.environ.get(f"CIO_{upper_name}")
     if url:
         return url.strip()
+
+    # 特化兼容 nfc 历史配置 (兼容原 nfcscript 的 NFC_PORT 与 NFC_READER)
+    if norm_name.lower() == "nfc":
+        nfc_port = os.environ.get("NFC_PORT")
+        if nfc_port:
+            nfc_reader = os.environ.get("NFC_READER", "pn532")
+            return f"nfc://{nfc_port}?driver={nfc_reader}"
 
     raise DeviceConfigError(
         f"Device '{norm_name}' is not configured. "
@@ -109,17 +117,10 @@ def _cleanup_all_devices() -> None:
     with _DEVICE_LOCK:
         for dev_inst in list(_ACTIVE_DEVICES.values()):
             try:
-                if hasattr(dev_inst, "sync") and hasattr(dev_inst.sync, "close"):
-                    dev_inst.sync.close()
-                elif hasattr(dev_inst, "close"):
-                    res = dev_inst.close()
-                    if inspect.isawaitable(res):
-                        # Close unawaited coroutine object safely
-                        res.close()
+                dev_inst.sync.close()
             except Exception:
                 pass
         _ACTIVE_DEVICES.clear()
-
 
 
 def close_device(name: str = "default") -> None:
@@ -129,12 +130,7 @@ def close_device(name: str = "default") -> None:
         if norm_key in _ACTIVE_DEVICES:
             dev_inst = _ACTIVE_DEVICES.pop(norm_key)
             try:
-                if hasattr(dev_inst, "sync") and hasattr(dev_inst.sync, "close"):
-                    dev_inst.sync.close()
-                elif hasattr(dev_inst, "close"):
-                    res = dev_inst.close()
-                    if inspect.isawaitable(res):
-                        res.close()
+                dev_inst.sync.close()
             except Exception:
                 pass
 
@@ -145,8 +141,10 @@ def clear_history(name: str = "default") -> None:
     with _DEVICE_LOCK:
         dev_inst = _ACTIVE_DEVICES.get(norm_key)
         if dev_inst is not None:
-            if hasattr(dev_inst, "logger") and hasattr(dev_inst.logger, "clear"):
-                dev_inst.logger.clear()
+            try:
+                dev_inst.clear_history()
+            except Exception:
+                pass
 
 
 def close_all_devices() -> None:
@@ -201,8 +199,20 @@ class _LazyDeviceProxy:
         return get_device("default", sync=False)
 
     def __getattr__(self, name: str) -> Any:
-        target = get_device("default", sync=True)
-        return getattr(target, name)
+        try:
+            target = get_device("default", sync=True)
+            if hasattr(target, name):
+                return getattr(target, name)
+        except Exception:
+            target = None
+
+        # 尝试作为具名设备访问 (如 dev.nfc, dev.power)
+        try:
+            return get_device(name, sync=True)
+        except Exception:
+            if target is not None:
+                return getattr(target, name)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name.startswith("_"):
@@ -215,28 +225,16 @@ class _LazyDeviceProxy:
         return get_device(name, sync=True)
 
     def __enter__(self) -> Any:
-        target = get_device("default", sync=True)
-        if hasattr(target, "__enter__"):
-            return target.__enter__()
-        return target
+        return get_device("default", sync=True).__enter__()
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
-        target = get_device("default", sync=True)
-        if hasattr(target, "__exit__"):
-            return target.__exit__(exc_type, exc_val, exc_tb)
-        return None
+        return get_device("default", sync=True).__exit__(exc_type, exc_val, exc_tb)
 
     async def __aenter__(self) -> Any:
-        target = get_device("default", sync=False)
-        if hasattr(target, "__aenter__"):
-            return await target.__aenter__()
-        return target
+        return await get_device("default", sync=False).__aenter__()
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
-        target = get_device("default", sync=False)
-        if hasattr(target, "__aexit__"):
-            return await target.__aexit__(exc_type, exc_val, exc_tb)
-        return None
+        return await get_device("default", sync=False).__aexit__(exc_type, exc_val, exc_tb)
 
     def close(self) -> None:
         """关闭默认设备并从单例池中注销。"""

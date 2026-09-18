@@ -24,15 +24,16 @@ class ProtocolTransport:
         self.codec = codec
         self._buffer = bytearray()
         self._sync_wrapper: SyncTransportWrapper | None = None
+        self._lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
 
     def _get_lock(self) -> asyncio.Lock:
-
         try:
             current_loop = asyncio.get_running_loop()
         except RuntimeError:
             current_loop = None
 
-        if getattr(self, "_lock", None) is None or getattr(self, "_lock_loop", None) != current_loop:
+        if self._lock is None or self._lock_loop != current_loop:
             self._lock = asyncio.Lock()
             self._lock_loop = current_loop
         return self._lock

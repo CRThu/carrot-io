@@ -39,7 +39,7 @@ def crc8(data: bytes) -> int:
 def get_carrot_url() -> str:
     port = os.environ.get("CIO_CARROT_PORT", "COM3")
     baud = os.environ.get("CIO_CARROT_BAUD", "2000000")
-    return f"i2c+serial://{port}?baud={baud}&reg_len=2"
+    return f"i2c://{port}?baud={baud}&reg_len=2"
 
 
 @pytest.fixture(scope="module")

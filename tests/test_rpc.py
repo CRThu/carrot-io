@@ -27,8 +27,8 @@ async def test_rpc_server_daemon_end_to_end():
     rpc_server = await start_rpc_server("127.0.0.1", 0)
     rpc_host, rpc_port = rpc_server._server.sockets[0].getsockname()
 
-    # 3. Client connects via rpc+tcp URL scheme
-    url = f"rpc+tcp://{rpc_host}:{rpc_port}/{echo_host}:{echo_port}"
+    # 3. Client connects via clean rpc URL scheme with explicit transport=tcp
+    url = f"rpc://{rpc_host}:{rpc_port}/{echo_host}:{echo_port}?transport=tcp"
     async with cio.connect(url) as client:
         # Write bytes over RPC proxy
         written = await client.write(b"PING RPC PROXY\n")
@@ -50,7 +50,7 @@ async def test_rpc_server_error_handling():
     rpc_host, rpc_port = rpc_server._server.sockets[0].getsockname()
 
     # Connect to invalid target backend over RPC
-    url = f"rpc+invalidscheme://{rpc_host}:{rpc_port}/device123"
+    url = f"rpc://{rpc_host}:{rpc_port}/device123?target_transport=invalidscheme"
     client = cio.connect(url)
     with pytest.raises(cio.TransportError):
         await client.open()
@@ -65,7 +65,7 @@ async def test_rpc_server_sync_client():
     rpc_host, rpc_port = rpc_server._server.sockets[0].getsockname()
 
     def sync_client_run():
-        url = f"rpc+mock://{rpc_host}:{rpc_port}"
+        url = f"rpc://{rpc_host}:{rpc_port}?target_url=mock://"
         with cio.connect(url).sync as client:
             assert client.is_open
             written = client.write(b"SYNC RPC PING\n")

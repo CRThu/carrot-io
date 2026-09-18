@@ -70,3 +70,9 @@ uv run bump-my-version bump patch           # 小版本升级
 9. **显式能力自省与开箱即用（Capabilities Introspection & Auto-Ready Resilience）**：
    - **显式能力契约**：淘汰 `hasattr` 盲猜与伪实现。所有传输实体必须声明不可变集合 `capabilities: frozenset[str]`（如 `frozenset({"stream", "uart"})`）。调用不支持的能力触发强类型的 `UnsupportedCapabilityError`（双重继承自 `TransportError` 和 `AttributeError`，兼顾强指引与鸭子类型容错）。
    - **开箱即用与自然就绪**：衍生子通道遵从最自然的开箱即用习惯（`if not self.is_open: await self.open()` 自动就绪），摒弃跨层私有状态追踪与人工拦截补丁，返璞归真，安全轻量。
+10. **标准统一 URI 体系（RFC 3986 Standard URIs）**：
+    - 统一遵循标准单 Scheme 规范：`{contract}://{address}?{query}`。
+    - 默认串口底座与协议桥：总线协议桥（`i2c://COM3`、`spi://COM3`、`gpio://COM3`、`nfc://COM10`）默认基于串口物理底座通信并挂接相应协议桥。
+    - 异构与网络底座显式指定：非串口或网络底座通过查询参数显式指定，如 `i2c://0?transport=ch347`、`spi://192.168.1.100:5025?transport=tcp`、`rpc://192.168.1.50:8000/COM3?transport=serial`。
+    - 领域顶层入口统一声明式表达：`nfc://COM3?driver=pn532`。
+

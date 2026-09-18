@@ -11,8 +11,8 @@ async def main():
     print("[RPC Server] 网关已启动，正在监听 127.0.0.1:8999...")
 
     try:
-        # 2. 客户端通过 rpc+mock:// 建立透明 RPC 代理连接
-        async with cio.connect("rpc+mock://127.0.0.1:8999", timeout=2.0) as remote_dev:
+        # 2. 客户端通过 rpc:// 建立透明 RPC 代理连接
+        async with cio.connect("rpc://127.0.0.1:8999?target_url=mock://", timeout=2.0) as remote_dev:
             await remote_dev.write(b"HELLO_REMOTE_DEVICE\n")
             print("远程写入成功，最近历史记录:")
             print(remote_dev.dump_history(limit=1))

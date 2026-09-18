@@ -76,38 +76,38 @@ def test_default_bridges_registered():
 
 
 def test_two_part_url_fallback_to_default_cb(monkeypatch):
-    """Two-part composite scheme i2c+serial:// falls back to default 'cb' bridge."""
-    dev = cio.connect("i2c+serial://COM3?baud=115200")
+    """Clean bus scheme i2c://COM3 falls back to default 'cb' bridge and inferred serial transport."""
+    dev = cio.connect("i2c://COM3?baud=115200")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.port == "COM3"
     assert dev.transport.baudrate == 115200
 
 
 def test_three_part_url_explicit_cb_and_alias():
-    """Three-part composite scheme explicitly specifies cb or carrot."""
-    dev_cb = cio.connect("i2c+cb+serial://COM3")
+    """Query parameter bridge= explicitly specifies cb or carrot."""
+    dev_cb = cio.connect("i2c://COM3?bridge=cb")
     assert isinstance(dev_cb, AsyncI2cBridge)
 
-    dev_carrot = cio.connect("i2c+carrot+serial://COM3")
+    dev_carrot = cio.connect("i2c://COM3?bridge=carrot")
     assert isinstance(dev_carrot, AsyncI2cBridge)
 
-    dev_spi = cio.connect("spi+cb+tcp://127.0.0.1:5025")
+    dev_spi = cio.connect("spi://127.0.0.1:5025?bridge=cb")
     assert isinstance(dev_spi, AsyncSpiBridge)
 
-    dev_gpio = cio.connect("gpio+cb+serial://COM3")
+    dev_gpio = cio.connect("gpio://COM3?bridge=cb")
     assert isinstance(dev_gpio, AsyncGpioBridge)
 
 
 def test_custom_bridge_registration_and_connect():
-    """Custom protocol bridge can be registered and accessed via 3-part URL."""
+    """Custom protocol bridge can be registered and accessed via ?bridge= parameter."""
     cio.register_bridge("i2c", "custom_proto", DummyCustomI2cBridge)
 
     # Verify registered
     cls = registry.get_bridge_cls("i2c", "custom_proto")
     assert cls is DummyCustomI2cBridge
 
-    # Connect using 3-part URL
-    dev = cio.connect("i2c+custom_proto+serial://COM4?speed=400")
+    # Connect using clean URI and bridge query option
+    dev = cio.connect("i2c://COM4?bridge=custom_proto&speed=400")
     assert isinstance(dev, DummyCustomI2cBridge)
     assert dev.transport.port == "COM4"
     assert dev.kwargs.get("speed") == "400"
@@ -117,17 +117,17 @@ def test_custom_bridge_set_as_default():
     """Custom bridge can be registered or set as default for a bus."""
     cio.register_bridge("custom_bus", ["mb", "modbus"], DummyCustomI2cBridge, is_default=True)
 
-    # 2-part URL on custom bus resolves to default bridge
-    dev = cio.connect("custom_bus+serial://COM5")
+    # Clean URI on custom bus resolves to default bridge
+    dev = cio.connect("custom_bus://COM5")
     assert isinstance(dev, DummyCustomI2cBridge)
 
-    # 3-part URL with alias
-    dev_alias = cio.connect("custom_bus+modbus+serial://COM5")
+    # Clean URI with explicit bridge alias
+    dev_alias = cio.connect("custom_bus://COM5?bridge=modbus")
     assert isinstance(dev_alias, DummyCustomI2cBridge)
 
 
 def test_native_hardware_priority_on_two_part_url(monkeypatch):
-    """When base transport natively implements the bus method, 2-part URL bypasses bridge."""
+    """When base transport natively implements the bus method, clean bus URI bypasses bridge."""
     # Register mock backend
     registry.register(
         name="nativedev",
@@ -136,33 +136,33 @@ def test_native_hardware_priority_on_two_part_url(monkeypatch):
         probe_fn=lambda: True,
     )
 
-    # 2-part URL: i2c+nativedev://0 -> calls native dev.i2c() directly
-    dev = cio.connect("i2c+nativedev://0")
+    # Clean URL: i2c://0?transport=nativedev -> calls native dev.i2c() directly
+    dev = cio.connect("i2c://0?transport=nativedev")
     assert isinstance(dev, MockTransport)
     assert dev.address == "native_i2c"
 
-    # 3-part URL: i2c+cb+nativedev://0 -> explicitly wraps with cb bridge
-    dev_bridged = cio.connect("i2c+cb+nativedev://0")
+    # Explicit bridge: i2c://0?transport=nativedev&bridge=cb -> explicitly wraps with cb bridge
+    dev_bridged = cio.connect("i2c://0?transport=nativedev&bridge=cb")
     assert isinstance(dev_bridged, AsyncI2cBridge)
 
 
 def test_bridge_registry_error_handling():
-    """Proper strong-typed exceptions for unknown bridges, buses, or malformed URLs."""
+    """Proper strong-typed exceptions for unknown bridges, buses, or legacy '+' schemes."""
     # Unknown bridge for registered bus
     with pytest.raises(InvalidUrlError) as excinfo:
-        cio.connect("i2c+unknown_bridge_xyz+serial://COM3")
+        cio.connect("i2c://COM3?bridge=unknown_bridge_xyz")
     assert "unknown_bridge_xyz" in str(excinfo.value)
     assert "cb" in str(excinfo.value)
 
     # Unknown bus with no bridges registered
     with pytest.raises(InvalidUrlError) as excinfo:
-        cio.connect("unregistered_bus_xyz+serial://COM3")
+        cio.connect("unregistered_bus_xyz://COM3")
     assert "unregistered_bus_xyz" in str(excinfo.value)
 
-    # Malformed URL with > 3 parts
+    # Legacy '+' scheme rejected with clear guidance
     with pytest.raises(InvalidUrlError) as excinfo:
-        cio.connect("i2c+cb+foo+serial://COM3")
-    assert "Malformed composite scheme" in str(excinfo.value)
+        cio.connect("i2c+cb+serial://COM3")
+    assert "Invalid composite scheme 'i2c+cb+serial'" in str(excinfo.value)
 
     # Setting unknown bridge as default
     with pytest.raises(InvalidUrlError):

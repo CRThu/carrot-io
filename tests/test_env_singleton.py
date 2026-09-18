@@ -184,3 +184,24 @@ def test_device_pool_close_device_and_clear_history(monkeypatch):
     assert "default" not in _ACTIVE_DEVICES
 
 
+def test_env_nfc_and_short_names_resolution(monkeypatch):
+    """Verify CIO_NFC and short name env resolution (CIO_POWER)."""
+    monkeypatch.setenv("CIO_NFC", "mock://nfc_reader")
+    monkeypatch.setenv("CIO_POWER", "mock://power_supply")
+
+    assert resolve_device_url("nfc") == "mock://nfc_reader"
+    assert resolve_device_url("power") == "mock://power_supply"
+
+    # Verify dev.nfc and dev.power attribute resolution
+    assert dev.nfc.address == "nfc_reader"
+    assert dev.power.address == "power_supply"
+
+
+def test_env_nfc_legacy_fallback(monkeypatch):
+    """Verify legacy NFC_PORT and NFC_READER fallback when CIO_NFC is not set."""
+    monkeypatch.setenv("NFC_PORT", "COM10")
+    monkeypatch.setenv("NFC_READER", "clrc663")
+
+    assert resolve_device_url("nfc") == "nfc://COM10?driver=clrc663"
+
+

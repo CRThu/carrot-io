@@ -47,7 +47,7 @@ class SyncTransportWrapper:
 
     def close(self) -> None:
         try:
-            if getattr(self._async, "is_open", False):
+            if self._async.is_open:
                 self._run_sync(self._async.close())
         finally:
             if self._loop and self._loop.is_running():
@@ -65,15 +65,15 @@ class SyncTransportWrapper:
 
     @property
     def capabilities(self) -> frozenset[str]:
-        return getattr(self._async, "capabilities", frozenset())
+        return self._async.capabilities
 
     @property
     def is_open(self) -> bool:
-        return bool(getattr(self._async, "is_open", False))
+        return self._async.is_open
 
     @property
     def trace(self) -> bool:
-        return bool(getattr(self._async, "trace", False))
+        return self._async.trace
 
     @trace.setter
     def trace(self, value: bool) -> None:
@@ -132,13 +132,11 @@ class SyncTransportWrapper:
             super().__setattr__(name, value)
 
     def __enter__(self) -> SyncTransportWrapper:
-        if hasattr(self._async, "open"):
-            self.open()
+        self.open()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if hasattr(self._async, "close"):
-            self.close()
+        self.close()
 
 
 class AsyncBaseTransport(abc.ABC):

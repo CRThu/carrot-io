@@ -95,15 +95,15 @@ async def main():
 asyncio.run(main())
 ```
 
-### 2. URL 通用工厂与 SPI+TCP 组合协议桥
+### 2. URL 通用工厂与 SPI Over TCP 协议桥
 
 ```python
 import asyncio
 import cio
 
 async def main():
-    # 通过组合 URL 建立 SPI Over TCP 桥
-    async with cio.connect("spi+tcp://192.168.1.100:5025?clock=10MHz") as spi:
+    # 通过标准 URI 建立 SPI Over TCP 桥 (显式指定 transport=tcp)
+    async with cio.connect("spi://192.168.1.100:5025?transport=tcp&clock=10MHz") as spi:
         rx = await spi.transfer(b"\x9F\x00\x00\x00")
         print("Flash JEDEC ID:", rx.hex())
 
@@ -157,7 +157,7 @@ async def test_instrument():
         assert res == "MOCK_MULTIMETER_V1"
 ```
 
-### 6. 跨网络 RPC 硬件透传代理 (`rpc+serial://`)
+### 6. 跨网络 RPC 硬件透传代理 (`rpc://`)
 
 ```python
 import asyncio
@@ -168,7 +168,7 @@ import cio
 
 # 2. 本地电脑 A 直接通过 URL 代理控制远程串口
 async def main():
-    url = "rpc+serial://192.168.1.200:8000/COM1?baud=115200"
+    url = "rpc://192.168.1.200:8000/COM1?transport=serial&baud=115200"
     async with cio.connect(url) as dev:
         await dev.write(b"HELLO REMOTE COM1\n")
         resp = await dev.read_until(b"\n")
@@ -177,20 +177,20 @@ async def main():
 asyncio.run(main())
 ```
 
-### 7. 硬件控制包协议桥 (`gpio+`, `i2c+`, `spi+`, `frame+`)
+### 7. 硬件控制包协议桥 (`gpio://`, `i2c://`, `spi://`)
 
 ```python
 import asyncio
 import cio
 
 async def main():
-    # 通过标准硬件帧协议桥控制 GPIO 引脚与 I2C / SPI 外设 (带 CRC16 校验)
-    async with cio.connect("gpio+serial://COM6?baud=115200") as gpio:
+    # 通过标准硬件协议桥控制 GPIO 引脚与 I2C / SPI 外设 (自动推导串口底座并挂载 CarrotBridge)
+    async with cio.connect("gpio://COM6?baud=115200") as gpio:
         await gpio.set_high()
         level = await gpio.read_level()
         print("GPIO Level:", level)
 
-    async with cio.connect("i2c+serial://COM6?baud=115200") as i2c:
+    async with cio.connect("i2c://COM6?baud=115200") as i2c:
         chip_id = await i2c.read_reg(addr=0x68, reg=0x75, nbytes=1)
         print("I2C Chip ID:", chip_id.hex())
 
@@ -202,7 +202,7 @@ asyncio.run(main())
 
 ## 下位机硬件控制协议规范 (CarrotProtocol V1.0)
 
-`cio` 组合协议桥（`gpio+`, `i2c+`, `spi+`）底层统一采用 **CarrotBridge ASCII 硬件控制协议** 与 MCU / 单片机下位机通信。
+`cio` 总线协议桥（`gpio://`, `i2c://`, `spi://`）底层统一采用 **CarrotBridge ASCII 硬件控制协议** 与 MCU / 单片机下位机通信。
 
 包含引脚控制（`IO.W`, `IO.R`, `IO.MODE`, `IO.PULL`）、I2C 物理收发与波特率设置（`IIC.W`, `IIC.R`, `IIC.SPEED`）、SPI 全双工收发与模式设置（`SPI.W`, `SPI.R`, `SPI.T`, `SPI.MODE`, `SPI.SPEED`）及响应规范。
 
@@ -217,9 +217,9 @@ asyncio.run(main())
 
 #### `cio.connect(url: str, **kwargs) -> AsyncBaseTransport`
 通用 URL 工厂入口。解析 Scheme 并实例化对应的 Backend 或组合协议桥。
-- **示例**：`cio.connect("serial://COM3?baud=115200")`
-- **组合 URL**：`cio.connect("spi+tcp://192.168.1.100:5025")`（自动用 `AsyncSpiBridge` 包装 `TcpTransport`）
-- **I2C 组合 URL**：`cio.connect("i2c+serial://COM3?baud=2000000&reg_len=2")`（自动用 `AsyncI2cBridge` 包装 `SerialTransport`，并配置全局默认 16 位寄存器地址长度）
+- **标准直连 URL**：`cio.connect("serial://COM3?baud=115200")`
+- **SPI 桥 URL**：`cio.connect("spi://192.168.1.100:5025?transport=tcp")`（显式指定 TCP 底座并用 `AsyncSpiBridge` 包装）
+- **I2C 桥 URL**：`cio.connect("i2c://COM3?baud=2000000&reg_len=2")`（默认串口底座，用 `AsyncI2cBridge` 包装，配置全局默认 16 位寄存器地址长度）
 
 #### `cio.scan(kind: str | None = None) -> list[dict]`
 扫描全盘可用硬件设备。内部自动进行静默 Probe 试探，自动跳过未安装依赖的 Backend。
@@ -311,7 +311,7 @@ asyncio.run(main())
 
 ### 6. 远程硬件 RPC 代理网关 (RPC Remote Hardware Proxy & Gateway)
 
-- **`cio.connect("rpc+serial://192.168.1.200:8000/COM1?baud=115200")`**：跨网络透明代理操控远端电脑上的物理串口/硬件。
+- **`cio.connect("rpc://192.168.1.200:8000/COM1?transport=serial&baud=115200")`**：跨网络透明代理操控远端电脑上的物理串口/硬件。
 - **`RpcRemoteTransport(target_url, host, port)`**：客户端 RPC 代理传输管道（基于 JSON-RPC 2.0 异步网关，零第三方依赖）。
 - **`start_rpc_server(host="0.0.0.0", port=8000) -> RpcServer`**：在远端电脑上一行代码启动硬件代理网关守护进程，自动将本地所有硬件/串口暴露至网络。
 

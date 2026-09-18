@@ -7,8 +7,9 @@ import cio
 
 async def main():
     try:
-        # async with cio.connect("i2c+serial://COM6?baud=115200", timeout=1.0) as dev:
-        async with cio.connect("i2c+tcp://192.168.1.100:5025", timeout=2.0) as dev:
+        # 标准 URI: 串口直连 i2c://COM6 或 网络桥 i2c://192.168.1.100:5025?transport=tcp
+        # async with cio.connect("i2c://COM6?baud=115200", timeout=1.0) as dev:
+        async with cio.connect("i2c://192.168.1.100:5025?transport=tcp", timeout=2.0) as dev:
             # 设备 7 位 I2C 从机地址 (如 0x68 陀螺仪 / 传感器)
             i2c_addr = 0x68
 
