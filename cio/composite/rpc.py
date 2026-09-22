@@ -9,14 +9,16 @@ import base64
 import json
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.exceptions import ConnectionError, IOOperationError, TransportError
+from cio.core.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.core.converters import BytesLike, ensure_bytes
+from cio.core.exceptions import ConnectionError, IOOperationError, ReadTimeoutError, TransportError, WriteTimeoutError
+from cio.core.registry import registry
 from cio.core.stream import AsyncStreamTransport
 
 
 class RpcRemoteTransport(AsyncStreamTransport):
     """
-    Client-side transparent RPC Remote Proxy Transport.
+    Transparent Client-side RPC Transport.
     Proxies all transport commands (open/write/read/close) over TCP to a remote RpcServer daemon.
     """
 
@@ -28,7 +30,7 @@ class RpcRemoteTransport(AsyncStreamTransport):
         transport: AsyncBaseTransport | None = None,
         address: str | None = None,
         timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)

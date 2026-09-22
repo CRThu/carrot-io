@@ -6,7 +6,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from cio.core.base import DEFAULT_BUFFER_SIZE
 from cio.core.exceptions import (
+    CDllMissingError,
     ConnectionError,
     PythonPackageMissingError,
 )
@@ -16,7 +18,8 @@ from cio.core.uart import AsyncUartTransport
 
 def _probe_serial() -> bool:
     try:
-        import serial  # type: ignore # noqa: F401
+        import serial.tools.list_ports  # type: ignore # noqa: F401
+
         return True
     except (ImportError, ModuleNotFoundError):
         return False
@@ -25,26 +28,24 @@ def _probe_serial() -> bool:
 def _scan_serial() -> list[dict[str, Any]]:
     if not _probe_serial():
         return []
-    try:
-        import serial.tools.list_ports  # type: ignore
+    import serial.tools.list_ports  # type: ignore
 
-        ports = serial.tools.list_ports.comports()
-        return [
-            {
-                "scheme": "serial",
-                "port": p.device,
-                "description": p.description,
-                "hwid": p.hwid,
-            }
-            for p in ports
-        ]
-    except Exception:
-        return []
+    ports = serial.tools.list_ports.comports()
+    return [
+        {
+            "scheme": "serial",
+            "port": p.device,
+            "address": p.device,
+            "description": p.description,
+            "hwid": p.hwid,
+        }
+        for p in ports
+    ]
 
 
 class SerialTransport(AsyncUartTransport):
     """
-    Serial (UART / RS232 / CH340) Transport using PySerial.
+    Serial (UART) Transport using PySerial.
     """
 
     def __init__(
@@ -54,7 +55,7 @@ class SerialTransport(AsyncUartTransport):
         baudrate: int = 115200,
         address: str | None = None,
         timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
         actual_baud = int(baud) if baud != 115200 else int(baudrate)
@@ -127,6 +128,17 @@ class SerialTransport(AsyncUartTransport):
                 return chunk
 
         return b""
+
+    async def flush(self) -> None:
+        """Clear both OS-level serial driver buffers and internal FifoBuffer."""
+        async with self._get_read_lock():
+            self.fifo.clear()
+            if self._serial and self._is_open:
+                loop = asyncio.get_running_loop()
+                try:
+                    await loop.run_in_executor(None, self._serial.reset_input_buffer)
+                except Exception:
+                    pass
 
 
 registry.register(

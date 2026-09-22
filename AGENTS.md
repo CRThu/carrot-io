@@ -11,14 +11,14 @@
 ## Project Structure & Navigation
 
 ```text
- 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.register_bridge() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.check()
+ 1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.register_bridge() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.Collector() / cio.check()
  2. 协议桥层:    CarrotBridge / AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
  3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
  4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport
  5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / CH347 DLL / C DLLs (visa32)
 ```
 
-- `cio/core/`: 核心基类（`base`）、总线契约（`stream`, `packet`, `i2c`, `spi`, `gpio`, `uart`）、环境变量单例代理（`env`）、集中类型转换（`converters`）、无界缓冲（`buffer`）、热路径内存日志（`logger`）、工厂与静默探测（`factory`, `registry`）、分级异常（`exceptions`）、协议绑定（`codec`, `protocol`）
+- `cio/core/`: 核心基类（`base`）、总线契约（`stream`, `packet`, `i2c`, `spi`, `gpio`, `uart`）、环境变量单例代理（`env`）、集中类型转换（`converters`）、时序数据收集器（`collector`）、无界缓冲（`buffer`）、热路径内存日志（`logger`）、工厂与静默探测（`factory`, `registry`）、分级异常（`exceptions`）、协议绑定（`codec`, `protocol`）
 - `cio/composite/`: 硬件协议桥（`carrotbridge`、`i2c` / `spi` / `gpio` 总线桥）、跨机代理（`rpc`）
 - `cio/backends/`: 延迟加载硬件适配器（`socket`, `serial`, `ftdi`, `ch347`, `visa`）
 - `cio/testing/`: 测试组件（`mock` 设备、`verify` 纯粹断言子系统：`check`, `require`, `verify`, `VerificationSession`）
@@ -75,4 +75,10 @@ uv run bump-my-version bump patch           # 小版本升级
     - 默认串口底座与协议桥：总线协议桥（`i2c://COM3`、`spi://COM3`、`gpio://COM3`、`nfc://COM10`）默认基于串口物理底座通信并挂接相应协议桥。
     - 异构与网络底座显式指定：非串口或网络底座通过查询参数显式指定，如 `i2c://0?transport=ch347`、`spi://192.168.1.100:5025?transport=tcp`、`rpc://192.168.1.50:8000/COM3?transport=serial`。
     - 领域顶层入口统一声明式表达：`nfc://COM3?driver=pn532`。
+11. **多通道时序数据收集与 1D 向量模型（Multi-Channel Time-Series & 1D Vector Model）**：
+    - **1D 向量本质**：每个 Tag 是一条随时间独立生长的 1D 时序向量，天然允许不同采样率与非等长数据，严禁引入 2D 矩阵与强行对齐等高开销约束。
+    - **单一权威打点入口**：淘汰割裂的方法（如 `push` / `collect_many` / `collect_batch`），所有采集收敛至统一单一方法 `collect(...)`（支持标量、多通道关键字、向量序列自动展开）。
+    - **抗毛刺中位数优先**：硬件测量中瞬态毛刺与噪声常见，统计分析优先推荐抗干扰能力强的高击穿点 `col.median(tag)`。
+    - **Crash-Safe 实时流式落盘**：文件输出采用写缓冲与流式追加写入，保障面对崩溃或中断时数据不丢失，并在上下文退出时确保安全刷盘。
+
 

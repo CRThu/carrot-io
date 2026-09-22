@@ -139,6 +139,9 @@ class SyncTransportWrapper:
         self.close()
 
 
+DEFAULT_BUFFER_SIZE: int = 16 * 1024 * 1024  # 16 MB default buffer capacity
+
+
 class AsyncBaseTransport(abc.ABC):
     """
     Abstract Base Class for all transport channels.
@@ -148,7 +151,7 @@ class AsyncBaseTransport(abc.ABC):
     def __init__(
         self,
         timeout: float | str | None = None,
-        buffer_size: int = 1024 * 1024,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
         show_hex: bool = True,
         show_ascii: bool = True,

@@ -30,9 +30,9 @@ def test_registry_silent_probe():
     assert empty_devs == []
 
 
-def test_visa_stub_error():
-    dev = cio.connect("visa://GPIB0::1::INSTR")
-    with pytest.raises((PythonPackageMissingError, CDllMissingError, DriverMissingError)):
+def test_visa_backend_error_handling():
+    dev = cio.connect("visa://NONEXISTENT::1::INSTR")
+    with pytest.raises((PythonPackageMissingError, CDllMissingError, DriverMissingError, ConnectionError)):
         dev.sync.open()
 
 

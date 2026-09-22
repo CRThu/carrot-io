@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.converters import format_arg
-from cio.core.exceptions import IOOperationError, ReadTimeoutError
+from cio.core.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.core.converters import BytesLike, ensure_bytes, format_arg, parse_bool, parse_hex_bytes, parse_int, parse_int_list
+from cio.core.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
 from cio.core.stream import AsyncStreamTransport
 
 
@@ -22,7 +22,7 @@ class CarrotBridge(AsyncBaseTransport):
         self,
         transport: AsyncBaseTransport,
         timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
         borrowed: bool = False,
         **kwargs: Any,

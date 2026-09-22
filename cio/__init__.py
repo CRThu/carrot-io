@@ -6,7 +6,7 @@ from __future__ import annotations
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 import cio.composite  # Ensure default bridges register with global registry # noqa: F401
 
-from cio.core.base import AsyncBaseTransport, SyncTransportWrapper
+from cio.core.base import AsyncBaseTransport, SyncTransportWrapper, DEFAULT_BUFFER_SIZE
 from cio.core.converters import BytesLike, ensure_bytes
 from cio.core.logger import IoLogger, LogEntry
 from cio.core.stream import AsyncStreamTransport
@@ -16,6 +16,7 @@ from cio.core.i2c import AsyncI2cTransport
 from cio.core.spi import AsyncSpiTransport
 from cio.core.gpio import AsyncGpioPin
 from cio.core.protocol import ProtocolTransport
+from cio.core.collector import Collector, DataCollector, DataPoint
 from cio.core.codec import (
     BaseCodec,
     LineCodec,
@@ -93,7 +94,7 @@ def tcp(
     host: str = "127.0.0.1",
     port: int = 5025,
     timeout: float | None = None,
-    buffer_size: int = 1024 * 1024,
+    buffer_size: int = DEFAULT_BUFFER_SIZE,
     **kwargs,
 ) -> AsyncStreamTransport:
     """Create a TCP transport instance."""
@@ -150,6 +151,29 @@ def ch347(
     return Ch347DeviceTransport(index=index, timeout=timeout, **kwargs)
 
 
+def visa(
+    resource_name: str,
+    timeout: float | None = 5.0,
+    backend: str | None = None,
+    read_termination: str | None = None,
+    write_termination: str | None = None,
+    buffer_size: int = DEFAULT_BUFFER_SIZE,
+    **kwargs,
+) -> AsyncStreamTransport:
+    """Create a VISA instrument transport instance with default 5.0s timeout."""
+    from cio.backends.visa import VisaTransport
+
+    return VisaTransport(
+        resource_name=resource_name,
+        timeout=timeout,
+        backend=backend,
+        read_termination=read_termination,
+        write_termination=write_termination,
+        buffer_size=buffer_size,
+        **kwargs,
+    )
+
+
 __version__ = "1.10.1"
 
 __all__ = [
@@ -164,6 +188,7 @@ __all__ = [
     "serial",
     "ftdi",
     "ch347",
+    "visa",
     "start_rpc_server",
     # Core Abstractions
     "AsyncBaseTransport",
@@ -212,6 +237,10 @@ __all__ = [
     "close_all_devices",
     "reset_devices",
     "clear_history",
+    # Data Ingestion & Storage Pipeline
+    "Collector",
+    "DataCollector",
+    "DataPoint",
     # Testing
     "MockTransport",
     "MockGpioPin",

@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
+from cio.core.base import DEFAULT_BUFFER_SIZE
+from cio.core.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
 from cio.core.gpio import AsyncGpioPin
 from cio.core.registry import registry
 from cio.core.stream import AsyncStreamTransport
@@ -20,7 +22,7 @@ class MockTransport(AsyncStreamTransport):
         self,
         address: str = "",
         timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)

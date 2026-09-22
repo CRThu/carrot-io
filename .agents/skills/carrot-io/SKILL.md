@@ -152,7 +152,34 @@ with cio.serial("COM3", baud=2000000) as bridge:
 
 ---
 
-## 7. 异常处理与排错指南
+## 7. 多通道数据收集器速查 (`cio.Collector`)
+
+专为示波器波形采样、供电/温度打点与抗毛刺分析设计：
+
+```python
+with cio.Collector("measurements.csv") as col:
+    # 1. 唯一权威方法打点 (多通道关键字同时打点或单通道带单位)
+    col.collect(VCC=3.3, ICC=0.12, TEMP=25.4)
+    col.collect(5.01, tag="CH1", unit="V")
+    
+    # 2. 向量连续波形直接注入 (自动平铺展开)
+    col.collect([1.1, 1.2, 1.3], tag="WAVE")
+
+    # 3. 1D 向量检索与二维快捷切片
+    recent_vcc = col["VCC", -10:]
+    wave_slice = col["WAVE"][:100]
+
+    # 4. 抗毛刺中位数与基础统计
+    mid = col.median("VCC")
+    avg = col.mean("VCC")
+
+    # 5. 格式化控制台看板
+    col.print_summary()
+```
+
+---
+
+## 8. 异常处理与排错指南
 
 - `DriverMissingError`：缺少底层驱动（如 `pyserial` 或 `CH347DLL`），附带安装指令。
 - `InvalidUrlError`：URL 格式非法（特别包含旧式 `+` 语法）。
@@ -163,3 +190,4 @@ with cio.serial("COM3", baud=2000000) as bridge:
   for record in dev.history:
       print(f"[{record.direction}] {record.payload.hex()}")
   ```
+

@@ -1,27 +1,40 @@
 """
-SPI 总线通信示例 (SPI Master)
+SPI 总线最简教学示例 (SPI Master)
+
+直连下位机或测试底座，全双工读取 SPI Flash JEDEC ID：
+- 异步原生模式 (asyncio)
+- 便捷同步模式 (with 上下文)
 """
 import asyncio
 import cio
 
+URL = "spi://COM3?baud=2000000&cs=0"
 
-async def main():
-    try:
-        # 支持通过标准 URI 连接 SPI 桥 (如 spi://192.168.1.100:5025?transport=tcp 或 spi://COM6?cs=0)
-        async with cio.connect("spi://192.168.1.100:5025?transport=tcp&clock=10MHz", timeout=2.0) as spi:
-            # 1. 发送 JEDEC ID 读取指令 (0x9F) 并读取 3 字节响应
-            rx = await spi.transfer(b"\x9F\x00\x00\x00")
-            print(f"读取到的 Flash JEDEC ID: {rx.hex()}")
 
-            # 2. 单向写入数据 (丢弃 MISO)
-            await spi.write(b"\x06")  # 写使能 (WREN)
+# ==========================================
+# 1. 异步模式 (原生协程)
+# ==========================================
+async def async_demo():
+    print("--- 1. 原生异步模式 (Async) ---")
+    async with cio.connect(URL, timeout=2.0) as spi:
+        # 发送 0x9F 命令同时读回 3 字节厂商与设备 ID
+        rx = await spi.transfer([0x9F, 0x00, 0x00, 0x00])
+        print("Flash ID (原始回包):", rx.hex())
 
-            # 3. 单向读取数据 (发送 Dummy 字节)
-            status = await spi.read(1)
-            print(f"Flash 状态寄存器: {status.hex()}")
-    except cio.TransportError as e:
-        print("[SPI 提示] 通信或设备未响应:", e)
+
+# ==========================================
+# 2. 同步模式 (线性脚本，零异步语法心智负担)
+# ==========================================
+def sync_demo():
+    print("\n--- 2. 便捷同步模式 (Sync) ---")
+    with cio.connect(URL, timeout=2.0) as spi:
+        rx = spi.transfer([0x9F, 0x00, 0x00, 0x00])
+        print("Flash ID (原始回包):", rx.hex())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(async_demo())
+        sync_demo()
+    except cio.TransportError as err:
+        print("[SPI 提示] 硬件未连接或端口被占用:", err)

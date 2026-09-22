@@ -25,8 +25,9 @@
 - [四、硬件测试与断言框架 (`cio.testing.Verifier`)](#四硬件测试与断言框架-ciotestingverifier)
 - [五、消息编解码与高层协议 (`cio.core.codec` / `dev.bind`)](#五消息编解码与高层协议-ciocorecodec--devbind)
 - [六、远程 RPC 硬件代理网关 (`cio.composite.rpc`)](#六远程-rpc-硬件代理网关-ciocompositerpc)
-- [七、数据类型与异常体系](#七数据类型与异常体系)
-- [八、即拷即用标准代码模板 (Recipes)](#八即拷即用标准代码模板-recipes)
+- [七、多通道时序数据收集器 (`cio.Collector`)](#七多通道时序数据收集器-ciocollector)
+- [八、数据类型与异常体系](#八数据类型与异常体系)
+- [九、即拷即用标准代码模板 (Recipes)](#九即拷即用标准代码模板-recipes)
 
 ---
 
@@ -53,6 +54,7 @@
 | **CH347 原生 GPIO**| `gpio://0?transport=ch347&pin=3` | 显式指定 CH347 硬件原生 GPIO 引脚控制，参数：`pin=0~7` |
 | **NFC 射频读卡器** | `nfc://COM10` | 默认串口直连 PN532 读卡器（默认 `driver=pn532`） |
 | **NFC 切换驱动/总线** | `nfc://COM4?driver=clrc663` 或 `nfc://COM3?driver=pn532&bus=i2c&addr=0x24` | 指定芯片驱动（`clrc663`）或通过 I2C 挂载 |
+| **VISA 仪器设备** | `visa://USB0::0x2A8D::0x9007::MY63160152::INSTR` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `read_termination=`, `backend=@ni` |
 | **自定义协议桥** | `i2c://COM3?bridge=myproto` | 通过 `cio.register_bridge` 注入的自研或开源协议桥 |
 | **RPC 硬件代理** | `rpc://192.168.1.50:8000/COM1?baud=115200` | 跨网络机器远程硬件透明代理 |
 
@@ -126,6 +128,7 @@ cio.close_all_devices()         # 批量回收关闭所有单例
 - `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
 - `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, **kwargs)`
 - `cio.ch347(index=0, **kwargs)`
+- `cio.visa(resource_name, timeout=None, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
 
 ### 6. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
@@ -531,7 +534,89 @@ with cio.connect(url) as dev:
 
 ---
 
-## 七、数据类型与异常体系
+## 七、多通道时序数据收集器 (`cio.Collector`)
+
+`cio.Collector`（类名 `DataCollector`）是专为芯片产测、电压/电流/温度巡检、示波器波形捕获设计的极简时序数据收集器。
+
+### 核心物理模型与设计准则：
+1. **纯标准库 1D 时序向量（1D Vector Model）**：每个 Tag 是一条随时间独立生长的 1D 时序向量（允许通道间采样率不同、数据点长度不等），不存在强制对齐的 2D 矩阵假定。零第三方依赖，对 NumPy 天然友好。
+2. **单一权威打点入口（Single Authority `collect`）**：淘汰割裂的多打点方法，所有打点统一收敛至 `collect(...)`（支持仿函数 `col(...)` 直接调用）。
+3. **向量序列自动平铺展开**：传入 `list` / `tuple` 序列时默认按向量连续追加，无需 `batch=True` 等冗余开关。
+4. **抗毛刺中位数优先（Median-First Statistics）**：针对硬件测量场景中的瞬态噪声毛刺（Glitch），内置抗干扰极强的 `col.median(tag)` 中位数计算。
+5. **Crash-Safe 实时流式追加落盘**：初始化指定 `filepath` 时立即开启实时写缓冲；面对 `Ctrl+C` 中断或断电最大限度避免丢失数据，上下文退出时自动 Flush。
+
+### 1. 构造函数
+```python
+col = cio.Collector(filepath: str | Path | None = None, *, buffer_size: int = 1000)
+```
+- `filepath`：可选实时流式追加落盘的 CSV 文件路径。
+- `buffer_size`：写缓冲区打点阈值（默认 1000 点），达到后自动分批刷新至磁盘，退出上下文或销毁时全量刷盘。
+
+### 2. 唯一打点方法 (`collect` / `__call__`)
+```python
+col.collect(*args, tag: str = "default", unit: str | None = None, timestamp: float | None = None, **kwargs)
+```
+- **多通道同时打点（最推荐）**：
+  ```python
+  col.collect(CH1=5.01, CH2=3.32, TEMP=25.4)
+  # 支持携带共享时间戳
+  col.collect(VBUS=5.0, IBUS=1.2, timestamp=time.time())
+  ```
+- **单值打点与携带单位**：
+  ```python
+  col.collect(5.05, tag="CH1", unit="V")
+  # 仿函数快捷调用等价于 collect
+  col(25.6, tag="TEMP", unit="°C")
+  ```
+- **一维波形序列自动展开**：
+  ```python
+  wave = [1.02, 1.05, 1.03, 1.08]
+  col.collect(wave, tag="WAVEFORM", unit="V")
+  ```
+
+### 3. 数据检索与切片索引
+- `col[tag] -> list[float | int]`：获取指定 Tag 的完整 1D 数值向量。
+- `col[tag][idx] -> float | int`：读取单个点数值。
+- `col[tag, slice] -> list[float | int]`：二维切片语法糖，直接获取指定区间数据（如 `col["CH1", :100]` 或 `col["CH1", -10:]`）。
+- `col.timestamps(tag) -> list[float]`：获取指定 Tag 对应的时间戳向量。
+- `col.tags() -> list[str]`：获取当前已记录的所有通道名称列表。
+- `len(col)`：获取当前收集的总数据点数。
+
+### 4. 统计与分析指标
+```python
+# 抗毛刺中位数（测量首选，消除瞬态脉冲毛刺）
+mid = col.median("CH1")
+
+# 均值与方差
+avg = col.mean("CH1")
+std = col.std("CH1")
+
+# 极值
+min_v = col.min("CH1")
+max_v = col.max("CH1")
+
+# 全量统计字典
+stats = col.stats("CH1")
+# {'count': 100, 'mean': 5.01, 'median': 5.01, 'std': 0.02, 'min': 4.98, 'max': 5.05, 'unit': 'V'}
+```
+
+### 5. 数据导出与呈现
+- `col.to_csv(filepath: str | Path | None = None, *, tag: str | None = None) -> Path`：导出为标准时序 CSV；支持指定 `tag` 过滤单通道。
+- `col.to_dict(copy: bool = True) -> dict[str, list[DataPoint]]`：获取通道到底层数据点对象的字典。
+- `col.print_summary(title="DATA COLLECTION SUMMARY")`：在控制台打印美观的 ASCII 多通道统计数据看板。
+- `col.clear(tag: str | None = None)`：清空全部通道或指定通道的内存数据。
+
+### 6. 上下文管理器与生命周期
+```python
+with cio.Collector("experiment.csv") as col:
+    for i in range(100):
+        col.collect(CH1=i * 0.1, CH2=i * 0.2)
+# 退出上下文自动 flush 文件句柄并安全关闭
+```
+
+---
+
+## 八、数据类型与异常体系
 
 ### 1. 数据类型归一化 (`BytesLike`)
 所有写入入参均声明为 `BytesLike = bytes | bytearray | int | list[int] | tuple[int, ...]，内部通过 `cio.ensure_bytes()` 统一归一化：
@@ -562,7 +647,7 @@ TransportError (基类)
 
 ---
 
-## 八、即拷即用标准代码模板 (Recipes)
+## 九、即拷即用标准代码模板 (Recipes)
 
 ### 模板 1：I2C 芯片寄存器自动化验证 (同步 check / verify 范式)
 ```python
@@ -607,16 +692,25 @@ with cio.connect("spi://COM3?baud=2000000&cs=0&trace=on") as dev:
     print(f"Manufacturer ID: 0x{rx[1]:02X}, Device ID: 0x{rx[2]:02X}{rx[3]:02X}")
 ```
 
-### 模板 3：SCPI 可编程仪器交互
+### 模板 3：SCPI 可编程仪器与示波器交互 (VISA / TCP)
 ```python
 import cio
-from cio.core.codec import LineCodec
 
+# 方式 A: 原生 VISA 示波器交互（支持 USB-TMC、GPIB、TCPIP 仪器）
+# 自动通过系统安装的 NI-VISA / Keysight VISA 驱动与 PyVISA 访问
+with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
+    # 1. 询问仪器标识（直接传 SCPI 字符串，自动解码返回 str）
+    idn = scope.query("*IDN?")
+    print("Oscilloscope IDN:", idn)
+
+    # 2. 发送控制指令（直接传 SCPI 字符串，自动补换行）
+    scope.write("*CLS")
+    scope.write(":AUToscale")
+
+# 方式 B: 原生网络 TCP SCPI 仪器交互
 with cio.connect("tcp://192.168.1.100:5025?trace=on") as dev:
-    proto = dev.bind(LineCodec(delimiter=b"\n"))
-    proto.write("*IDN?")
-    idn = proto.read(timeout=2.0)
-    print("Instrument IDN:", idn)
+    resp = dev.query(b"*IDN?\n")
+    print("Instrument IDN:", resp)
 ```
 
 ### 模板 4：沁恒 CH347 高速 I2C 传感器采集与双串口并发通信
@@ -656,3 +750,32 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+### 模板 5：示波器波形与多通道数据采集实时落盘 (`cio.Collector`)
+```python
+import time
+import cio
+
+# 实时流式追加至 CSV，抗异常中断
+with cio.Collector("scope_measurements.csv") as col:
+    # 模拟从示波器读取通道 1 波形点并从万用表读取供电
+    for cycle in range(5):
+        # 1. 多通道标量同时打点
+        col.collect(VCC=3.30 + cycle * 0.01, ICC=0.15 + cycle * 0.005, TEMP=25.0 + cycle * 0.2)
+
+        # 2. 模拟示波器读取到的波形向量段（自动平铺展开为时序向量）
+        wave_chunk = [0.01 * i + cycle * 0.05 for i in range(10)]
+        col.collect(wave_chunk, tag="CH1_WAVE", unit="V")
+
+        time.sleep(0.01)
+
+    # 3. 统计与中位数分析 (抗毛刺)
+    print("VCC 均值:", col.mean("VCC"))
+    print("VCC 中位数 (抗噪声):", col.median("VCC"))
+    print("CH1 采样点总数:", len(col["CH1_WAVE"]))
+    print("CH1 最新 5 点:", col["CH1_WAVE", -5:])
+
+    # 4. 打印 ASCII 汇总看板
+    col.print_summary("TEST RIG RUN 01")
+```
+
