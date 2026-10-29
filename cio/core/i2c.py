@@ -77,7 +77,7 @@ class AsyncI2cTransport(AsyncBaseTransport):
         actual_reg_len = max(base_len, needed_len) if reg_len is None else reg_len
         reg_bytes = reg.to_bytes(actual_reg_len, byteorder="big")
         raw_data = ensure_bytes(data)
-        await self.write(addr, reg_bytes + raw_data, timeout=timeout)
+        res = await self.write(addr, reg_bytes + raw_data, timeout=timeout)
 
         if verify:
             read_back = await self.read_reg(
@@ -94,4 +94,4 @@ class AsyncI2cTransport(AsyncBaseTransport):
                     f"expected {raw_data.hex().upper()}, got {read_back.hex().upper()}"
                 )
 
-        return len(raw_data)
+        return res

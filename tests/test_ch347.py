@@ -255,9 +255,9 @@ async def test_ch347_i2c_operations_mocked():
         reg_data = await i2c.read_reg(0x50, reg=0x0100, nbytes=2, reg_len=2)
         assert reg_data == bytes([0xAB, 0xAC])
 
-        # 4. 寄存器写与校验
+        # 4. 寄存器写与校验 (返回底层实际写入总字节数 2B reg + 2B data = 4B)
         written_reg = await i2c.write_reg(0x50, reg=0x0100, data=[0xAB, 0xAC], verify=True)
-        assert written_reg == 2
+        assert written_reg == 4
 
         # 5. 总线扫描
         addrs = await i2c.scan()
