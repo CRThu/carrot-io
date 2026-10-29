@@ -12,9 +12,10 @@ from cio.trace.logger import IoLogger, LogEntry
 from cio.transports.stream import AsyncStreamTransport
 from cio.transports.packet import AsyncPacketTransport
 from cio.transports.uart import AsyncUartTransport
-from cio.bus.i2c import AsyncI2cTransport
-from cio.bus.spi import AsyncSpiTransport
-from cio.bus.gpio import AsyncGpioPin
+from cio.bus.base import AsyncBaseBus
+from cio.bus.i2c import AsyncI2cBus
+from cio.bus.spi import AsyncSpiBus
+from cio.bus.gpio import AsyncGpioBus
 from cio.protocols.protocol import ProtocolTransport
 from cio.trace.collector import Collector, DataCollector, DataPoint
 from cio.protocols.codec import (
@@ -56,7 +57,7 @@ from cio.env import (
 )
 from cio.factory import connect
 from cio.registry import registry
-from cio.testing.mock import MockTransport, MockGpioPin
+from cio.testing.mock import MockTransport, MockGpioBus
 from cio.testing.verify import (
     CheckResult,
     VerificationSession,
@@ -195,9 +196,10 @@ __all__ = [
     "AsyncStreamTransport",
     "AsyncPacketTransport",
     "AsyncUartTransport",
-    "AsyncI2cTransport",
-    "AsyncSpiTransport",
-    "AsyncGpioPin",
+    "AsyncBaseBus",
+    "AsyncI2cBus",
+    "AsyncSpiBus",
+    "AsyncGpioBus",
     "ProtocolTransport",
     "SyncTransportWrapper",
     # Composite Bridges & RPC Proxy
@@ -243,7 +245,7 @@ __all__ = [
     "DataPoint",
     # Testing
     "MockTransport",
-    "MockGpioPin",
+    "MockGpioBus",
     "CheckResult",
     "VerificationSession",
     "check",

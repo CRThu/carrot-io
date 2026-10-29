@@ -171,12 +171,12 @@ def test_packet_transport_sync():
 @pytest.mark.asyncio
 async def test_abstract_base_interfaces_not_implemented():
     from cio.converters import ensure_bytes
-    from cio.bus.gpio import AsyncGpioPin
-    from cio.bus.i2c import AsyncI2cTransport
-    from cio.bus.spi import AsyncSpiTransport
+    from cio.bus.gpio import AsyncGpioBus
+    from cio.bus.i2c import AsyncI2cBus
+    from cio.bus.spi import AsyncSpiBus
 
 
-    class BareGpio(AsyncGpioPin):
+    class BareGpio(AsyncGpioBus):
         async def set_high(self): await super().set_high()
         async def set_low(self): await super().set_low()
         async def toggle(self): await super().toggle()
@@ -196,7 +196,7 @@ async def test_abstract_base_interfaces_not_implemented():
         await gpio.wait_for_edge()
 
 
-    class BareSpi(AsyncSpiTransport):
+    class BareSpi(AsyncSpiBus):
         async def open(self): pass
         async def close(self): pass
         async def transfer(self, tx_data, timeout=None):
@@ -206,7 +206,7 @@ async def test_abstract_base_interfaces_not_implemented():
     with pytest.raises(NotImplementedError):
         await spi.transfer(b"\x12")
 
-    class EchoSpi(AsyncSpiTransport):
+    class EchoSpi(AsyncSpiBus):
         async def open(self): pass
         async def close(self): pass
         async def transfer(self, tx_data, timeout=None):

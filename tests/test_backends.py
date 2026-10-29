@@ -182,9 +182,9 @@ async def test_ftdi_backends_mocked():
     ):
         from cio.backends.ftdi import (
             FtdiUartTransport,
-            FtdiI2cTransport,
-            FtdiSpiTransport,
-            FtdiGpioPin,
+            FtdiI2cBus,
+            FtdiSpiBus,
+            FtdiGpioBus,
             _scan_ftdi,
         )
 
@@ -209,7 +209,7 @@ async def test_ftdi_backends_mocked():
         mock_i2c_controller.get_port.return_value = mock_i2c_port
         with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
              patch("pyftdi.i2c.I2cController", return_value=mock_i2c_controller):
-            fi = FtdiI2cTransport(url="ftdi://ftdi:2232h/1", frequency=400e3)
+            fi = FtdiI2cBus(url="ftdi://ftdi:2232h/1", frequency=400e3)
             await fi.open()
             assert fi.is_open
             assert await fi.write(0x50, [0x01, 0x02]) == 2
@@ -224,7 +224,7 @@ async def test_ftdi_backends_mocked():
         mock_spi_controller.get_port.return_value = mock_spi_port
         with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
              patch("pyftdi.spi.SpiController", return_value=mock_spi_controller):
-            fs = FtdiSpiTransport(url="ftdi://ftdi:2232h/1", frequency=1e6)
+            fs = FtdiSpiBus(url="ftdi://ftdi:2232h/1", frequency=1e6)
             await fs.open()
             assert fs.is_open
             assert await fs.transfer(b"\x11\x22") == b"\xAA\xBB"
@@ -236,7 +236,7 @@ async def test_ftdi_backends_mocked():
         # 4. FTDI GPIO
         mock_gpio_controller = MagicMock()
         mock_gpio_controller.read.side_effect = [0x00, 0x01, 0x00]
-        pin = FtdiGpioPin(gpio_controller=mock_gpio_controller, pin_index=0)
+        pin = FtdiGpioBus(gpio_controller=mock_gpio_controller, pin_index=0)
         await pin.set_high()
         await pin.set_low()
         await pin.toggle()
@@ -259,11 +259,11 @@ async def test_ftdi_backends_mocked():
             with pytest.raises(PythonPackageMissingError):
                 await fu_err.open()
 
-            fi_err = FtdiI2cTransport(url="ftdi://ftdi:2232h/1")
+            fi_err = FtdiI2cBus(url="ftdi://ftdi:2232h/1")
             with pytest.raises(PythonPackageMissingError):
                 await fi_err.open()
 
-            fs_err = FtdiSpiTransport(url="ftdi://ftdi:2232h/1")
+            fs_err = FtdiSpiBus(url="ftdi://ftdi:2232h/1")
             with pytest.raises(PythonPackageMissingError):
                 await fs_err.open()
 
@@ -271,13 +271,13 @@ async def test_ftdi_backends_mocked():
         # 7. FTDI Open Connection Errors
         with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
              patch("pyftdi.i2c.I2cController", side_effect=Exception("Device Busy")):
-            fi_fail = FtdiI2cTransport(url="ftdi://ftdi:2232h/1")
+            fi_fail = FtdiI2cBus(url="ftdi://ftdi:2232h/1")
             with pytest.raises(ConnectionError, match="Failed to configure FTDI I2C"):
                 await fi_fail.open()
 
         with patch("cio.backends.ftdi._probe_ftdi", return_value=True), \
              patch("pyftdi.spi.SpiController", side_effect=Exception("Device Busy")):
-            fs_fail = FtdiSpiTransport(url="ftdi://ftdi:2232h/1")
+            fs_fail = FtdiSpiBus(url="ftdi://ftdi:2232h/1")
             with pytest.raises(ConnectionError, match="Failed to configure FTDI SPI"):
                 await fs_fail.open()
 

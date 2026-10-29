@@ -18,9 +18,9 @@
 - [三、总线传输契约与接口方法](#三总线传输契约与接口方法)
   - [1. 基础传输接口 (`AsyncBaseTransport` / `SyncTransportWrapper`)](#1-基础传输接口-asyncbasetransport--synctransportwrapper)
   - [2. 字节流传输 (`AsyncStreamTransport` / `AsyncUartTransport`)](#2-字节流传输-asyncstreamtransport--asyncuarttransport)
-  - [3. I2C 主机总线 (`AsyncI2cTransport` / `AsyncI2cBridge`)](#3-i2c-主机总线-asynci2ctransport--asynci2cbridge)
-  - [4. SPI 全双工总线 (`AsyncSpiTransport` / `AsyncSpiBridge`)](#4-spi-全双工总线-asyncspitransport--asyncspibridge)
-  - [5. GPIO 引脚控制 (`AsyncGpioPin` / `AsyncGpioBridge`)](#5-gpio-引脚控制-asyncgpiopin--asyncgpiobridge)
+  - [3. I2C 主机总线 (`AsyncI2cBus` / `AsyncI2cBridge`)](#3-i2c-主机总线-asynci2cbus--asynci2cbridge)
+  - [4. SPI 全双工总线 (`AsyncSpiBus` / `AsyncSpiBridge`)](#4-spi-全双工总线-asyncspibus--asyncspibridge)
+  - [5. GPIO 引脚控制 (`AsyncGpioBus` / `AsyncGpioBridge`)](#5-gpio-引脚控制-asyncgpiobus--asyncgpiobridge)
   - [6. 有界报文传输 (`AsyncPacketTransport`)](#6-有界报文传输-asyncpackettransport)
 - [四、硬件测试与断言框架 (`cio.testing.Verifier`)](#四硬件测试与断言框架-ciotestingverifier)
 - [五、消息编解码与高层协议 (`cio.protocols` / `dev.bind`)](#五消息编解码与高层协议-cioprotocols--devbind)
@@ -33,7 +33,7 @@
 
 ## 一、顶层入口与连接工厂 (`cio.connect`)
 
-### 1. `cio.connect(url: str, **kwargs) -> AsyncBaseTransport`
+### 1. `cio.connect(url: str, **kwargs) -> AsyncBaseTransport | AsyncBaseBus`
 统一 URL 工厂函数。根据 URL Scheme 自动解析并实例化底层驱动或组合协议桥。
 
 #### URL Scheme 语法全景表
@@ -304,7 +304,7 @@ line = await dev.read_until(b"\r\n", timeout=1.0)
 
 ---
 
-### 3. I2C 主机总线 (`AsyncI2cTransport` / `AsyncI2cBridge`)
+### 3. I2C 主机总线 (`AsyncI2cBus` / `AsyncI2cBridge`)
 
 专为 I2C Master 设计的总线级 API，全面支持单字节/多字节寄存器寻址（异步协程原生调用；同步测试请使用 `Verifier`）：
 
@@ -331,7 +331,7 @@ await dev.config_speed(400000)                                           # 设�
 
 ---
 
-### 4. SPI 全双工总线 (`AsyncSpiTransport` / `AsyncSpiBridge`)
+### 4. SPI 全双工总线 (`AsyncSpiBus` / `AsyncSpiBridge`)
 
 全双工 SPI 传输契约：
 
@@ -351,7 +351,7 @@ await dev.config_speed(10000000)                                         # 设�
 
 ---
 
-### 5. GPIO 引脚控制 (`AsyncGpioPin` / `AsyncGpioBridge`)
+### 5. GPIO 引脚控制 (`AsyncGpioBus` / `AsyncGpioBridge`)
 
 引脚级电平与边沿控制契约：
 

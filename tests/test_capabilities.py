@@ -1,5 +1,5 @@
 """
-Unit tests for Capabilities Introspection, AsyncGpioPin Hierarchy,
+Unit tests for Capabilities Introspection, AsyncGpioBus Hierarchy,
 UnsupportedCapabilityError, and Parent-Child Cascading Close Prevention.
 """
 from __future__ import annotations
@@ -16,8 +16,9 @@ from cio.composite.carrotbridge import AsyncI2cBridge
 from cio.composite.carrotbridge import AsyncSpiBridge
 from cio.transports.base import AsyncBaseTransport
 from cio.exceptions import ConnectionError, TransportError, UnsupportedCapabilityError
-from cio.bus.gpio import AsyncGpioPin
-from cio.testing.mock import MockGpioPin, MockTransport
+from cio.bus.base import AsyncBaseBus
+from cio.bus.gpio import AsyncGpioBus
+from cio.testing.mock import MockGpioBus, MockTransport
 
 
 def test_capabilities_declaration_across_transports():
@@ -45,7 +46,7 @@ def test_capabilities_declaration_across_transports():
     gpio_bridge = cb.gpio(pin=0)
     assert gpio_bridge.capabilities == frozenset({"gpio"})
 
-    mock_gpio = MockGpioPin()
+    mock_gpio = MockGpioBus()
     assert mock_gpio.capabilities == frozenset({"gpio"})
 
 
@@ -77,13 +78,13 @@ def test_unsupported_capability_error_behavior():
     assert not isinstance(excinfo_attr.value, UnsupportedCapabilityError)
 
 
-def test_async_gpio_pin_inherits_async_base_transport():
-    """Verify AsyncGpioPin is fully integrated into AsyncBaseTransport hierarchy."""
-    pin = MockGpioPin(initial_state=False)
+def test_async_gpio_bus_inherits_async_base_bus():
+    """Verify AsyncGpioBus is fully integrated into AsyncBaseBus hierarchy."""
+    pin = MockGpioBus(initial_state=False)
 
     # Inheritance check
-    assert isinstance(pin, AsyncBaseTransport)
-    assert isinstance(pin, AsyncGpioPin)
+    assert isinstance(pin, AsyncBaseBus)
+    assert isinstance(pin, AsyncGpioBus)
 
     # Logger and history integration
     assert hasattr(pin, "logger")

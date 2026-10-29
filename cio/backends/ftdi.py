@@ -8,10 +8,10 @@ from typing import Any, Literal
 
 from cio.converters import BytesLike, ensure_bytes
 from cio.exceptions import ConnectionError, PythonPackageMissingError
-from cio.bus.gpio import AsyncGpioPin
-from cio.bus.i2c import AsyncI2cTransport
+from cio.bus.gpio import AsyncGpioBus
+from cio.bus.i2c import AsyncI2cBus
 from cio.registry import registry
-from cio.bus.spi import AsyncSpiTransport
+from cio.bus.spi import AsyncSpiBus
 from cio.transports.uart import AsyncUartTransport
 
 
@@ -115,7 +115,7 @@ class FtdiUartTransport(AsyncUartTransport):
         return await loop.run_in_executor(None, self._port.read, read_len)
 
 
-class FtdiI2cTransport(AsyncI2cTransport):
+class FtdiI2cBus(AsyncI2cBus):
     """
     FTDI I2C Controller Transport using PyFTDI.
     """
@@ -184,7 +184,7 @@ class FtdiI2cTransport(AsyncI2cTransport):
 
 
 
-class FtdiSpiTransport(AsyncSpiTransport):
+class FtdiSpiBus(AsyncSpiBus):
     """
     FTDI SPI Controller Transport using PyFTDI.
     """
@@ -251,7 +251,7 @@ class FtdiSpiTransport(AsyncSpiTransport):
 
 
 
-class FtdiGpioPin(AsyncGpioPin):
+class FtdiGpioBus(AsyncGpioBus):
     """
     FTDI GPIO Pin Control.
     """

@@ -1,5 +1,5 @@
 """
-Mock Objects for Unit Testing (MockTransport and MockGpioPin).
+Mock Objects for Unit Testing (MockTransport and MockGpioBus).
 """
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from cio.transports.base import DEFAULT_BUFFER_SIZE
 from cio.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
-from cio.bus.gpio import AsyncGpioPin
+from cio.bus.gpio import AsyncGpioBus
 from cio.registry import registry
 from cio.transports.stream import AsyncStreamTransport
 
@@ -64,7 +64,7 @@ class MockTransport(AsyncStreamTransport):
         return b""
 
 
-class MockGpioPin(AsyncGpioPin):
+class MockGpioBus(AsyncGpioBus):
     """
     Mock GPIO Pin for unit testing.
     """

@@ -1,15 +1,16 @@
 """
-Bus & Pin Sub-Namespace: I2C, SPI bus abstractions and GPIO pin controller.
+Bus Sub-Namespace: I2C, SPI, and GPIO hardware bus & pin controller abstractions.
 """
 from __future__ import annotations
 
-from cio.bus.gpio import AsyncGpioPin
-from cio.bus.i2c import AsyncI2cTransport
-from cio.bus.spi import AsyncSpiTransport
+from cio.bus.base import AsyncBaseBus
+from cio.bus.gpio import AsyncGpioBus
+from cio.bus.i2c import AsyncI2cBus
+from cio.bus.spi import AsyncSpiBus
 
 __all__ = [
-    "AsyncI2cTransport",
-    "AsyncSpiTransport",
-    "AsyncGpioPin",
+    "AsyncBaseBus",
+    "AsyncI2cBus",
+    "AsyncSpiBus",
+    "AsyncGpioBus",
 ]
-

@@ -33,9 +33,9 @@
   - [4. 跨网络透明 RPC 代理 (`rpc://`)](#4-跨网络透明-rpc-代理-rpc)
 - [五、核心类与 API 极速速查 (Cheat Sheet)](#五核心类与-api-极速速查-cheat-sheet)
   - [1. 物理流传输类 (`AsyncStreamTransport` / `VisaTransport`)](#1-物理流传输类-asyncstreamtransport--visatransport)
-  - [2. I2C 主机总线类 (`AsyncI2cTransport` / `AsyncI2cBridge`)](#2-i2c-主机总线类-asynci2ctransport--asynci2cbridge)
-  - [3. SPI 主机总线类 (`AsyncSpiTransport` / `AsyncSpiBridge`)](#3-spi-主机总线类-asyncspitransport--asyncspibridge)
-  - [4. GPIO 引脚控制类 (`AsyncGpioPin` / `AsyncGpioBridge`)](#4-gpio-引脚控制类-asyncgpiopin--asyncgpiobridge)
+  - [2. I2C 主机总线类 (`AsyncI2cBus` / `AsyncI2cBridge`)](#2-i2c-主机总线类-asynci2cbus--asynci2cbridge)
+  - [3. SPI 主机总线类 (`AsyncSpiBus` / `AsyncSpiBridge`)](#3-spi-主机总线类-asyncspibus--asyncspibridge)
+  - [4. GPIO 引脚控制类 (`AsyncGpioBus` / `AsyncGpioBridge`)](#4-gpio-引脚控制类-asyncgpiobus--asyncgpiobridge)
   - [5. 协议编解码器 (`dev.bind(codec)`)](#5-协议编解码器-devbindcodec)
   - [6. 测试验证断言与记分板 (`cio.testing.verify`)](#6-测试验证断言与记分板-ciotestingverify)
   - [7. 顶层入口与快捷构造 (`cio.*`)](#7-顶层入口与快捷构造-cio)
@@ -296,7 +296,7 @@ with cio.Collector("run.csv") as col:
 | `flush()` / `clear()` | 避脏缓冲区：清空底层 OS 物理驱动 FIFO 与内部缓冲（VISA 下触发 `viClear`） | `dev.flush()` / `scope.clear()` |
 | `dump_history(limit)` | 导出最近 TX/RX 通讯日志字符串（微秒时间戳、方向、Hex 对齐） | `print(dev.dump_history(10))` |
 
-### 2. I2C 主机总线类 (`AsyncI2cTransport` / `AsyncI2cBridge`)
+### 2. I2C 主机总线类 (`AsyncI2cBus` / `AsyncI2cBridge`)
 > 适用于：I2C 传感器、EEPROM、外设配置芯片
 
 | API 方法 | 概述与说明 | 极简调用示例 |
@@ -307,14 +307,14 @@ with cio.Collector("run.csv") as col:
 | `read(addr, nbytes)` | 从指定从机裸读原始字节流 | `raw = i2c.read(0x44, 6)` |
 | `write(addr, data)` | 向指定从机裸发送数据序列 | `i2c.write(0x44, [0x24, 0x00])` |
 
-### 3. SPI 主机总线类 (`AsyncSpiTransport` / `AsyncSpiBridge`)
+### 3. SPI 主机总线类 (`AsyncSpiBus` / `AsyncSpiBridge`)
 > 适用于：SPI Flash、高速 ADC/DAC、外置通信芯片
 
 | API 方法 | 概述与说明 | 极简调用示例 |
 |---|---|---|
 | `transfer(tx_data)` | 全双工同步收发：发出 `tx_data` 的同时读回等长数据 | `rx = spi.transfer([0x9F, 0x00, 0x00, 0x00])` |
 
-### 4. GPIO 引脚控制类 (`AsyncGpioPin` / `AsyncGpioBridge`)
+### 4. GPIO 引脚控制类 (`AsyncGpioBus` / `AsyncGpioBridge`)
 > 适用于：硬件复位引脚、片选 CS 控制、电平检测与边沿中断
 
 | API 方法 | 概述与说明 | 极简调用示例 |

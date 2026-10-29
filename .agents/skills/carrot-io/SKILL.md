@@ -22,7 +22,7 @@ description: >-
 | **I2C (专用芯片)** | `i2c://0?transport=ch347&frequency=400000` | 显式指定沁恒 CH347 高速硬件 I2C 后端 |
 | **SPI 总线** | `spi://COM3?baud=2000000&cs=0` | 默认串口底座；`cs` 指定片选引脚编号 |
 | **SPI (网络桥)** | `spi://192.168.1.100:5025?transport=tcp&clock=10MHz` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
-| **GPIO 引脚** | `gpio://COM3?pin=1` | 默认串口底座；返回 `AsyncGpioPin` 引脚句柄 |
+| **GPIO 引脚** | `gpio://COM3?pin=1` | 默认串口底座；返回 `AsyncGpioBus` 引脚句柄 |
 | **原始串口流** | `serial://COM3?baud=115200` | 原生全双工串口通信管道 |
 | **TCP / SCPI** | `tcp://192.168.1.100:5025` | 原生 TCP 网络字节流 |
 | **NFC 读卡器** | `nfc://COM3?driver=pn532` | 统一 NFC 入口（支持 `pn532`, `clrc663`） |
@@ -97,19 +97,19 @@ verify.summary()
 
 ## 4. 核心总线 API 契约
 
-### ① I2C 总线 (`AsyncI2cTransport`)
+### ① I2C 总线 (`AsyncI2cBus`)
 - `dev.read(addr: int, nbytes: int) -> bytes`：从机纯读取。
 - `dev.write(addr: int, data: BytesLike) -> int`：向从机纯写入。
 - `dev.read_reg(addr: int, reg: int, nbytes: int, reg_len: int | None = None) -> bytes`：原子读寄存器。
 - `dev.write_reg(addr: int, reg: int, data: BytesLike, reg_len: int | None = None) -> int`：写寄存器。
 - `dev.scan() -> list[int]`：扫描物理在线设备地址列表。
 
-### ② SPI 总线 (`AsyncSpiTransport`)
+### ② SPI 总线 (`AsyncSpiBus`)
 - `dev.transfer(data: BytesLike) -> bytes`：全双工同时收发数据。
 - `dev.write(data: BytesLike) -> int`：仅发送。
 - `dev.read(nbytes: int) -> bytes`：仅读取。
 
-### ③ GPIO 引脚 (`AsyncGpioPin`)
+### ③ GPIO 引脚与总线 (`AsyncGpioBus`)
 - `pin.set_high()`, `pin.set_low()`, `pin.toggle()`：电平控制。
 - `pin.read_level() -> bool`：读取输入电平。
 - `pin.config_mode("OUT,PP")` / `pin.config_pull("UP")`：配置推挽/开漏与上下拉。

@@ -13,9 +13,9 @@ import cio
 from cio.backends.ch347 import (
     Ch347Device,
     Ch347DeviceTransport,
-    Ch347GpioPin,
-    Ch347I2cTransport,
-    Ch347SpiTransport,
+    Ch347GpioBus,
+    Ch347I2cBus,
+    Ch347SpiBus,
     _find_ch347_dll_path,
     _load_ch347_dll,
     _probe_ch347,
@@ -87,17 +87,17 @@ def test_ch347_url_factory_parsing():
     assert base.dev_index == 0
 
     i2c = cio.connect("i2c://0?transport=ch347&frequency=400000")
-    assert isinstance(i2c, Ch347I2cTransport)
+    assert isinstance(i2c, Ch347I2cBus)
     assert i2c.frequency == 400000
 
     spi = cio.connect("spi://0?transport=ch347&frequency=15000000&mode=0&cs=1")
-    assert isinstance(spi, Ch347SpiTransport)
+    assert isinstance(spi, Ch347SpiBus)
     assert spi.frequency == 15000000
     assert spi.mode == 0
     assert spi.cs == 1
 
     gpio = cio.connect("gpio://0?transport=ch347&pin=4")
-    assert isinstance(gpio, Ch347GpioPin)
+    assert isinstance(gpio, Ch347GpioBus)
     assert gpio.pin == 4
 
 
@@ -183,9 +183,9 @@ async def test_ch347_device_transport_wrapper():
         assert transport.is_open is True
 
         # 测试衍生
-        assert isinstance(transport.i2c(), Ch347I2cTransport)
-        assert isinstance(transport.spi(), Ch347SpiTransport)
-        assert isinstance(transport.gpio(), Ch347GpioPin)
+        assert isinstance(transport.i2c(), Ch347I2cBus)
+        assert isinstance(transport.spi(), Ch347SpiBus)
+        assert isinstance(transport.gpio(), Ch347GpioBus)
 
         with pytest.raises(NotImplementedError):
             await transport._write_impl(b"test")
@@ -231,7 +231,7 @@ async def test_ch347_i2c_operations_mocked():
     with patch("cio.backends.ch347._load_ch347_dll", return_value=mock_dll):
         # 覆盖所有 4 个速度分支
         for freq, expected_mode in [(10_000, 0), (80_000, 1), (300_000, 2), (800_000, 3)]:
-            i2c_test = Ch347I2cTransport(device=device, frequency=freq)
+            i2c_test = Ch347I2cBus(device=device, frequency=freq)
             await i2c_test.open()
             mock_dll.CH347I2C_Set.assert_called_with(77, expected_mode)
             # 重入 open 测试
@@ -264,7 +264,7 @@ async def test_ch347_i2c_operations_mocked():
         assert len(addrs) > 0
 
         # 6. 非借用模式 close
-        standalone_i2c = Ch347I2cTransport(device=0, borrowed=False)
+        standalone_i2c = Ch347I2cBus(device=0, borrowed=False)
         await standalone_i2c.open()
         await standalone_i2c.close()
 
@@ -340,7 +340,7 @@ async def test_ch347_spi_operations_mocked():
             4_000_000, 2_000_000, 1_000_000, 400_000
         ]
         for f in freq_list:
-            s = Ch347SpiTransport(device=device, frequency=f)
+            s = Ch347SpiBus(device=device, frequency=f)
             await s.open()
             # 重入 open
             await s.open()
@@ -368,7 +368,7 @@ async def test_ch347_spi_operations_mocked():
             assert sync_rx == bytes([0x51])
 
         # 独立非借用 close
-        standalone_spi = Ch347SpiTransport(device=0, borrowed=False)
+        standalone_spi = Ch347SpiBus(device=0, borrowed=False)
         await standalone_spi.open()
         await standalone_spi.close()
 
@@ -485,7 +485,7 @@ async def test_ch347_gpio_operations_mocked():
         await pin.close()
 
         # 独立非借用 pin close
-        standalone_pin = Ch347GpioPin(device=0, pin=1, borrowed=False)
+        standalone_pin = Ch347GpioBus(device=0, pin=1, borrowed=False)
         await standalone_pin.open()
         await standalone_pin.close()
 

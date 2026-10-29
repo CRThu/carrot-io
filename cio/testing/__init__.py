@@ -3,7 +3,7 @@ Testing utilities package.
 """
 from __future__ import annotations
 
-from cio.testing.mock import MockTransport, MockGpioPin
+from cio.testing.mock import MockTransport, MockGpioBus
 from cio.testing.verify import (
     CheckResult,
     VerificationSession,
@@ -15,7 +15,7 @@ from cio.testing.verify import (
 
 __all__ = [
     "MockTransport",
-    "MockGpioPin",
+    "MockGpioBus",
     "CheckResult",
     "VerificationSession",
     "check",

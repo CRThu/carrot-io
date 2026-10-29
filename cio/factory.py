@@ -7,6 +7,7 @@ import urllib.parse
 from typing import Any
 
 from cio.transports.base import AsyncBaseTransport
+from cio.bus.base import AsyncBaseBus
 from cio.converters import parse_bool, parse_int
 from cio.exceptions import InvalidUrlError
 from cio.registry import registry
@@ -69,7 +70,7 @@ def parse_url(url: str) -> tuple[str, str, dict[str, Any]]:
     return scheme, address, query_params
 
 
-def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
+def connect(url: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
     """
     Universal transport factory from URL specification.
     Supports clean standard URIs:

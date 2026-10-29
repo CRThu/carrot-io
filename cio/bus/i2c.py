@@ -1,29 +1,29 @@
 """
-I2C Bus Protocol Abstraction (AsyncI2cTransport).
+I2C Bus Protocol Abstraction (AsyncI2cBus).
 """
 from __future__ import annotations
 
 import abc
 from typing import Any
 
-from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
-from cio.converters import BytesLike, ensure_bytes, parse_int
-from cio.exceptions import IOOperationError, UnsupportedCapabilityError
+from cio.bus.base import AsyncBaseBus
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import IOOperationError
 
 
-class AsyncI2cTransport(AsyncBaseTransport):
+class AsyncI2cBus(AsyncBaseBus):
     """
-    Abstract Base Class for I2C master transports.
+    Abstract Base Class for I2C master buses.
     """
 
     def __init__(
         self,
         timeout: float | str | None = None,
-        buffer_size: int = DEFAULT_BUFFER_SIZE,
         reg_len: int = 1,
         trace: bool = False,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)
+        super().__init__(timeout=timeout, trace=trace, **kwargs)
         self.default_reg_len = int(reg_len)
 
     @property
@@ -42,7 +42,7 @@ class AsyncI2cTransport(AsyncBaseTransport):
 
     async def scan(self, timeout: float | None = None) -> list[int]:
         """Scan I2C bus for active 7-bit slave device addresses."""
-        raise NotImplementedError("I2C bus scanning is not supported by this transport")
+        raise NotImplementedError("I2C bus scanning is not supported by this bus")
 
     async def read_reg(
         self,

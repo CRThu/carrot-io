@@ -8,7 +8,7 @@ from cio.composite.carrotbridge import AsyncGpioBridge
 from cio.composite.carrotbridge import AsyncI2cBridge
 from cio.composite.carrotbridge import AsyncSpiBridge
 from cio.exceptions import IOOperationError, ReadTimeoutError
-from cio.testing.mock import MockGpioPin, MockTransport
+from cio.testing.mock import MockGpioBus, MockTransport
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_i2c_bridge_reg_len_default_and_override():
 @pytest.mark.asyncio
 async def test_spi_bridge_full_coverage():
     pipe = MockTransport()
-    cs = MockGpioPin(initial_state=True)
+    cs = MockGpioBus(initial_state=True)
     spi = AsyncSpiBridge(pipe, cs_pin=cs, cs=0)
     await spi.open()
 

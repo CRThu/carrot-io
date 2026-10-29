@@ -9,9 +9,9 @@ from typing import Any, Literal
 
 from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
 from cio.transports.stream import AsyncStreamTransport
-from cio.bus.i2c import AsyncI2cTransport
-from cio.bus.spi import AsyncSpiTransport
-from cio.bus.gpio import AsyncGpioPin
+from cio.bus.i2c import AsyncI2cBus
+from cio.bus.spi import AsyncSpiBus
+from cio.bus.gpio import AsyncGpioBus
 from cio.converters import (
     BytesLike,
     ensure_bytes,
@@ -169,7 +169,7 @@ class CarrotBridge(AsyncBaseTransport):
                     self.logger.log_in(line, tag="MSG")
 
 
-class AsyncI2cBridge(AsyncI2cTransport):
+class AsyncI2cBridge(AsyncI2cBus):
     """
     I2C Bus Master Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """
@@ -243,7 +243,7 @@ class AsyncI2cBridge(AsyncI2cTransport):
         await self._bridge.call("IIC.SPEED", speed_hz)
 
 
-class AsyncSpiBridge(AsyncSpiTransport):
+class AsyncSpiBridge(AsyncSpiBus):
     """
     SPI Bus Master Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """
@@ -251,7 +251,7 @@ class AsyncSpiBridge(AsyncSpiTransport):
     def __init__(
         self,
         transport: AsyncBaseTransport | CarrotBridge,
-        cs_pin: AsyncGpioPin | None = None,
+        cs_pin: AsyncGpioBus | None = None,
         bus: int = 0,
         cs: int = 0,
         timeout: float | None = None,
@@ -350,7 +350,7 @@ class AsyncSpiBridge(AsyncSpiTransport):
         await self._bridge.call("SPI.SPEED", speed_hz)
 
 
-class AsyncGpioBridge(AsyncGpioPin):
+class AsyncGpioBridge(AsyncGpioBus):
     """
     GPIO Pin Bridge implementing CarrotBridge ASCII Protocol over any transport.
     """

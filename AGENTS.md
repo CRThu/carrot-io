@@ -13,7 +13,8 @@
 ```text
  1. 顶层入口:    cio.dev / cio.connect() / cio.scan() / cio.register_bridge() / cio.tcp() / cio.udp() / cio.serial() / cio.ftdi() / cio.ch347() / cio.Collector() / cio.check()
  2. 协议桥层:    CarrotBridge / AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
- 3. 核心传输层:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncI2cTransport / AsyncSpiTransport
+ 3. 传输与总线:  AsyncBaseTransport -> AsyncStreamTransport / AsyncPacketTransport / AsyncUartTransport
+                 AsyncBaseBus -> AsyncI2cBus / AsyncSpiBus / AsyncGpioBus
  4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport
  5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / CH347 DLL / C DLLs (visa32)
 ```
@@ -48,7 +49,7 @@ uv run bump-my-version bump patch           # 小版本升级
 1. **纯异步核心 + 通用同步适配（Pure Async Core & Universal Sync）**：
    - 内部 100% 纯协程实现 (`async def`)，**严禁编写专属同步类**。
    - 外部同步统一通过 `dev.sync`（由 `SyncTransportWrapper` 驱动后台专用 Loop 调度）；`with dev:` 自动进入同步视图，`async with dev:` 保持原生异步。
-   - `AsyncGpioPin` 归队统一继承 `AsyncBaseTransport`，天然享有全套调度、上下文管理、日志与历史缓冲。
+   - 总线与引脚统一继承 `AsyncBaseBus`（`AsyncI2cBus`, `AsyncSpiBus`, `AsyncGpioBus`），轻量零冗余流缓冲开销，天然享有全套调度、上下文管理、日志与历史。
 2. **环境单例与声明式注入（`cio.dev` Singleton & Injection）**：
    - `from cio import dev` 提供惰性初始化的全局单例代理。自动读取当前工作区 `.env` 或环境变量 `CIO_DEVICE`（或具名设备 `CIO_DEVICE_<NAME>`）。
    - 默认同步调用（`dev.write(...)`, `dev.i2c(...)`, `dev["power"].write(...)`），支持 `close_all_devices()` 安全回收。

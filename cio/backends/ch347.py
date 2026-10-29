@@ -13,10 +13,10 @@ from typing import Any, Literal
 from cio.transports.base import AsyncBaseTransport
 from cio.converters import BytesLike, ensure_bytes, parse_int
 from cio.exceptions import CDllMissingError, ConnectionError, IOOperationError
-from cio.bus.gpio import AsyncGpioPin
-from cio.bus.i2c import AsyncI2cTransport
+from cio.bus.gpio import AsyncGpioBus
+from cio.bus.i2c import AsyncI2cBus
 from cio.registry import registry
-from cio.bus.spi import AsyncSpiTransport
+from cio.bus.spi import AsyncSpiBus
 
 # --- C 结构体与类型定义 ---
 
@@ -201,14 +201,14 @@ class Ch347Device:
             await loop.run_in_executor(None, self.dll.CH347CloseDevice, self.dev_index)
             self.dll = None
 
-    def i2c(self, frequency: int = 400_000, **kwargs: Any) -> Ch347I2cTransport:
-        return Ch347I2cTransport(self, frequency=frequency, borrowed=True, **kwargs)
+    def i2c(self, frequency: int = 400_000, **kwargs: Any) -> Ch347I2cBus:
+        return Ch347I2cBus(self, frequency=frequency, borrowed=True, **kwargs)
 
-    def spi(self, cs: int = 0, frequency: int = 15_000_000, mode: int = 0, **kwargs: Any) -> Ch347SpiTransport:
-        return Ch347SpiTransport(self, cs=cs, frequency=frequency, mode=mode, borrowed=True, **kwargs)
+    def spi(self, cs: int = 0, frequency: int = 15_000_000, mode: int = 0, **kwargs: Any) -> Ch347SpiBus:
+        return Ch347SpiBus(self, cs=cs, frequency=frequency, mode=mode, borrowed=True, **kwargs)
 
-    def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioPin:
-        return Ch347GpioPin(self, pin=pin, borrowed=True, **kwargs)
+    def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioBus:
+        return Ch347GpioBus(self, pin=pin, borrowed=True, **kwargs)
 
 # --- 顶层物理底座传输抽象 (供 cio.connect("ch347://0") 使用) ---
 
@@ -247,13 +247,13 @@ class Ch347DeviceTransport(AsyncBaseTransport):
         self._is_open = False
         await self.device.close(force=True)
 
-    def i2c(self, frequency: int = 400_000, **kwargs: Any) -> Ch347I2cTransport:
+    def i2c(self, frequency: int = 400_000, **kwargs: Any) -> Ch347I2cBus:
         return self.device.i2c(frequency=frequency, **kwargs)
 
-    def spi(self, cs: int = 0, frequency: int = 15_000_000, mode: int = 0, **kwargs: Any) -> Ch347SpiTransport:
+    def spi(self, cs: int = 0, frequency: int = 15_000_000, mode: int = 0, **kwargs: Any) -> Ch347SpiBus:
         return self.device.spi(cs=cs, frequency=frequency, mode=mode, **kwargs)
 
-    def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioPin:
+    def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioBus:
         return self.device.gpio(pin=pin, **kwargs)
 
     async def _write_impl(self, data: bytes) -> int:
@@ -264,7 +264,7 @@ class Ch347DeviceTransport(AsyncBaseTransport):
 
 # --- I2C 总线传输实现 ---
 
-class Ch347I2cTransport(AsyncI2cTransport):
+class Ch347I2cBus(AsyncI2cBus):
     """
     Hardware I2C Master Transport using CH347 C API.
     """
@@ -478,7 +478,7 @@ class Ch347I2cTransport(AsyncI2cTransport):
 
 # --- SPI 总线传输实现 ---
 
-class Ch347SpiTransport(AsyncSpiTransport):
+class Ch347SpiBus(AsyncSpiBus):
     """
     Hardware SPI Master Transport using CH347 C API.
     """
@@ -595,7 +595,7 @@ class Ch347SpiTransport(AsyncSpiTransport):
 
 # --- GPIO 控制引脚实现 ---
 
-class Ch347GpioPin(AsyncGpioPin):
+class Ch347GpioBus(AsyncGpioBus):
     """
     Hardware GPIO Pin Control using CH347 C API.
     """

@@ -1,10 +1,10 @@
 """
-Unit tests for MockTransport, MockGpioPin, AsyncBaseTransport, and SyncTransportWrapper.
+Unit tests for MockTransport, MockGpioBus, AsyncBaseTransport, and SyncTransportWrapper.
 """
 import asyncio
 import pytest
 from cio.protocols.codec import LineCodec
-from cio.testing.mock import MockGpioPin, MockTransport
+from cio.testing.mock import MockGpioBus, MockTransport
 
 
 
@@ -63,7 +63,7 @@ def test_sync_transport_wrapper():
 
 @pytest.mark.asyncio
 async def test_mock_gpio():
-    pin = MockGpioPin(initial_state=False)
+    pin = MockGpioBus(initial_state=False)
     assert not await pin.read_level()
 
     await pin.set_high()
@@ -87,7 +87,7 @@ def test_sync_protocol_transport():
 
 @pytest.mark.asyncio
 async def test_mock_gpio_edges():
-    pin = MockGpioPin(initial_state=False)
+    pin = MockGpioBus(initial_state=False)
 
     async def trigger():
         await asyncio.sleep(0.02)
@@ -114,7 +114,7 @@ async def test_mock_gpio_edges():
 
 
 def test_sync_gpio_pin():
-    pin = MockGpioPin(initial_state=False)
+    pin = MockGpioBus(initial_state=False)
     assert not pin.sync.read_level()
 
     pin.sync.set_high()
@@ -130,7 +130,7 @@ async def test_gpio_wait_for_edge_pulse_tracking():
     Verify that wait_for_edge correctly tracks transitions across multiple pulses
     instead of missing the edge due to a stale initial reference level.
     """
-    pin = MockGpioPin(initial_state=False)
+    pin = MockGpioBus(initial_state=False)
 
     async def pulse():
         await pin.set_high()

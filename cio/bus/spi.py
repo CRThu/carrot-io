@@ -1,17 +1,18 @@
 """
-SPI Bus Protocol Abstraction (AsyncSpiTransport).
+SPI Bus Protocol Abstraction (AsyncSpiBus).
 """
 from __future__ import annotations
 
 import abc
+from typing import Any
 
-from cio.transports.base import AsyncBaseTransport
+from cio.bus.base import AsyncBaseBus
 from cio.converters import BytesLike, ensure_bytes
 
 
-class AsyncSpiTransport(AsyncBaseTransport):
+class AsyncSpiBus(AsyncBaseBus):
     """
-    Abstract Base Class for SPI master transports.
+    Abstract Base Class for SPI master buses.
     """
 
     @property
@@ -33,4 +34,3 @@ class AsyncSpiTransport(AsyncBaseTransport):
         """Read nbytes from SPI bus by clocking dummy bytes."""
         tx_data = bytes([dummy_byte & 0xFF] * nbytes)
         return await self.transfer(tx_data, timeout=timeout)
-
