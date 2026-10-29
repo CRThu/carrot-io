@@ -98,12 +98,6 @@ def resolve_device_url(name: str = "default") -> str:
     if url:
         return url.strip()
 
-    # 特化兼容 nfc 历史配置 (兼容原 nfcscript 的 NFC_PORT 与 NFC_READER)
-    if norm_name.lower() == "nfc":
-        nfc_port = os.environ.get("NFC_PORT")
-        if nfc_port:
-            nfc_reader = os.environ.get("NFC_READER", "pn532")
-            return f"nfc://{nfc_port}?driver={nfc_reader}"
 
     raise DeviceConfigError(
         f"Device '{norm_name}' is not configured. "

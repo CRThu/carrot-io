@@ -174,7 +174,7 @@ def test_io_logger_ascii_protocol_formatting():
         tag="RETURN",
     )
     ret_line = ret_entry.format_line(color=False)
-    assert "[IN ] [RETURN] (26B) 0x46,0x4A,0x57" in ret_line
+    assert "[IN ] [RETURN] (26B) [RETURN]: 0x46,0x4A,0x57" in ret_line
     assert "\r" not in ret_line
     assert "\n" not in ret_line
 

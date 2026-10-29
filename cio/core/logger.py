@@ -76,21 +76,18 @@ class LogEntry:
             msg = self.data.decode("utf-8", errors="replace").strip().replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
             return f"{prefix} {msg}".strip()
 
-        # 4. Check if this is an ASCII protocol command/response (e.g. CarrotBridge CMD/RETURN/MSG)
+        # 4. Check if this is a structured text command/response tag (e.g. CMD, RETURN, MSG)
         is_text_tag = self.tag in ("CMD", "RETURN", "MSG")
         is_printable_ascii = False
         if is_text_tag and show_ascii:
             try:
                 decoded = self.data.decode("utf-8")
-                # Ensure all characters are either printable ASCII or standard whitespace
                 is_printable_ascii = bool(decoded) and all(c in "\r\n\t " or (32 <= ord(c) <= 126) for c in decoded)
             except UnicodeDecodeError:
                 is_printable_ascii = False
 
         if is_text_tag and is_printable_ascii and show_ascii and not (show_hex and not show_ascii):
             clean_text = self.data.decode("utf-8", errors="replace").strip().replace("\r", "").replace("\n", "")
-            if self.tag == "RETURN" and clean_text.startswith("[RETURN]:"):
-                clean_text = clean_text[len("[RETURN]:"):].strip()
             if color:
                 if self.tag == "CMD":
                     clean_text = f"\033[96m{clean_text}\033[0m"

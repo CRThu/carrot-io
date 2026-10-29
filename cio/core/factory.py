@@ -101,55 +101,15 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
     except ImportError:
         pass
 
-    # 1. 远程 RPC 硬件代理网关 (rpc://host:port/target_path)
-    if scheme == "rpc":
-        from cio.composite.rpc import RpcRemoteTransport
+    # 1. 显式注册的专有 Scheme 工厂（如 rpc:// 或外部第三方扩展协议）
+    if registry.has_scheme_factory(scheme):
+        factory_fn = registry.get_scheme_factory(scheme)
+        transport = factory_fn(address=address, **merged_kwargs)
 
-        if "/" in address:
-            host_port, target_path = address.split("/", 1)
-        else:
-            host_port, target_path = address, ""
-
-        if ":" in host_port:
-            h, p = host_port.split(":", 1)
-            r_host, r_port = h, int(p)
-        else:
-            r_host, r_port = host_port, 8000
-
-        target_url_opt = merged_kwargs.pop("target_url", None)
-        if target_url_opt:
-            target_url = str(target_url_opt)
-        else:
-            target_transport = (
-                merged_kwargs.pop("target_transport", None)
-                or merged_kwargs.pop("transport", None)
-                or resolve_transport_name(target_path, default="serial")
-            )
-            target_query = ("?" + urllib.parse.urlencode(merged_kwargs)) if merged_kwargs else ""
-            target_url = f"{target_transport}://{target_path}{target_query}"
-
-        transport = RpcRemoteTransport(target_url=target_url, host=r_host, port=r_port, **merged_kwargs)
-
-    # 2. NFC 领域应用大类 (nfc://address?driver=pn532&bus=uart/i2c/spi)
-    elif scheme == "nfc":
-        driver = merged_kwargs.pop("driver", None)
-        bus = str(merged_kwargs.pop("bus", "uart")).lower()
-        transport_name = resolve_transport_name(address, merged_kwargs.pop("transport", None), default="serial")
-
-        if bus == "uart":
-            sub_transport = connect(f"{transport_name}://{address}", **merged_kwargs)
-        elif bus in ("i2c", "spi"):
-            sub_transport = connect(f"{bus}://{address}?transport={transport_name}", **merged_kwargs)
-        else:
-            raise InvalidUrlError(f"Unsupported bus '{bus}' for nfc. Expected 'uart', 'i2c', or 'spi'.")
-
-        bridge_cls = registry.get_bridge_cls("nfc", driver)
-        transport = bridge_cls(sub_transport, **merged_kwargs)
-
-    # 3. 通用硬件总线协议桥 (i2c, spi, gpio 或自定义总线)
+    # 2. 通用硬件总线协议桥 (i2c, spi, gpio 或外部注册的总线协议桥)
     elif registry.has_bus(scheme):
         transport_name = resolve_transport_name(address, merged_kwargs.pop("transport", None), default="serial")
-        bridge_name = merged_kwargs.pop("bridge", None)
+        bridge_name = merged_kwargs.pop("bridge", None) or merged_kwargs.pop("driver", None)
 
         base_transport = connect(f"{transport_name}://{address}", **merged_kwargs)
 
@@ -165,7 +125,7 @@ def connect(url: str, **kwargs: Any) -> AsyncBaseTransport:
             bridge_cls = registry.get_bridge_cls(scheme, bridge_name)
             transport = bridge_cls(base_transport, **merged_kwargs)
 
-    # 4. 底层物理传输驱动 (serial, tcp, udp, ftdi, ch347, mock...)
+    # 3. 底层物理传输驱动 (serial, tcp, udp, ftdi, ch347, mock...)
     else:
         info = registry.get_backend_info(scheme)
         transport = info.factory_cls(address=address, **merged_kwargs)  # type: ignore

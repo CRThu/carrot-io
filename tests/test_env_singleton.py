@@ -197,11 +197,15 @@ def test_env_nfc_and_short_names_resolution(monkeypatch):
     assert dev.power.address == "power_supply"
 
 
-def test_env_nfc_legacy_fallback(monkeypatch):
-    """Verify legacy NFC_PORT and NFC_READER fallback when CIO_NFC is not set."""
+def test_env_nfc_legacy_fallback_removed(monkeypatch):
+    """Verify legacy NFC_PORT without CIO_NFC raises DeviceConfigError (no special hardcoding)."""
+    import pytest
+    from cio.core.exceptions import DeviceConfigError
+    monkeypatch.delenv("CIO_NFC", raising=False)
     monkeypatch.setenv("NFC_PORT", "COM10")
     monkeypatch.setenv("NFC_READER", "clrc663")
 
-    assert resolve_device_url("nfc") == "nfc://COM10?driver=clrc663"
+    with pytest.raises(DeviceConfigError):
+        resolve_device_url("nfc")
 
 

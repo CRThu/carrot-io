@@ -38,6 +38,22 @@ class BackendRegistry:
         self._scheme_map: dict[str, str] = {}
         self._bridges: dict[str, dict[str, Type[Any]]] = {}
         self._default_bridges: dict[str, str] = {}
+        self._scheme_factories: dict[str, Callable[..., Any]] = {}
+
+    def register_scheme_factory(self, scheme: str, factory_fn: Callable[..., Any]) -> None:
+        """Register a custom URL factory for a specialized or composite scheme."""
+        self._scheme_factories[scheme.lower()] = factory_fn
+
+    def has_scheme_factory(self, scheme: str) -> bool:
+        """Check whether a custom scheme factory is registered."""
+        return scheme.lower() in self._scheme_factories
+
+    def get_scheme_factory(self, scheme: str) -> Callable[..., Any]:
+        """Get registered custom scheme factory."""
+        scheme_key = scheme.lower()
+        if scheme_key not in self._scheme_factories:
+            raise InvalidUrlError(f"No custom scheme factory registered for '{scheme}'.")
+        return self._scheme_factories[scheme_key]
 
     def register(
         self,
