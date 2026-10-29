@@ -4,10 +4,10 @@ Comprehensive Unit and Integration tests for CarrotBridge and composite bridges.
 import asyncio
 import pytest
 from cio.composite.carrotbridge import CarrotBridge
-from cio.composite.gpio import AsyncGpioBridge
-from cio.composite.i2c import AsyncI2cBridge
-from cio.composite.spi import AsyncSpiBridge
-from cio.core.exceptions import IOOperationError, ReadTimeoutError
+from cio.composite.carrotbridge import AsyncGpioBridge
+from cio.composite.carrotbridge import AsyncI2cBridge
+from cio.composite.carrotbridge import AsyncSpiBridge
+from cio.exceptions import IOOperationError, ReadTimeoutError
 from cio.testing.mock import MockGpioPin, MockTransport
 
 

@@ -23,7 +23,7 @@
   - [5. GPIO 引脚控制 (`AsyncGpioPin` / `AsyncGpioBridge`)](#5-gpio-引脚控制-asyncgpiopin--asyncgpiobridge)
   - [6. 有界报文传输 (`AsyncPacketTransport`)](#6-有界报文传输-asyncpackettransport)
 - [四、硬件测试与断言框架 (`cio.testing.Verifier`)](#四硬件测试与断言框架-ciotestingverifier)
-- [五、消息编解码与高层协议 (`cio.core.codec` / `dev.bind`)](#五消息编解码与高层协议-ciocorecodec--devbind)
+- [五、消息编解码与高层协议 (`cio.protocols` / `dev.bind`)](#五消息编解码与高层协议-cioprotocols--devbind)
 - [六、远程 RPC 硬件代理网关 (`cio.composite.rpc`)](#六远程-rpc-硬件代理网关-ciocompositerpc)
 - [七、多通道时序数据收集器 (`cio.Collector`)](#七多通道时序数据收集器-ciocollector)
 - [八、数据类型与异常体系](#八数据类型与异常体系)
@@ -72,7 +72,7 @@
 
 ```python
 import cio
-from cio.core.base import AsyncBaseTransport
+from cio import AsyncBaseTransport
 
 class MyI2cBridge(AsyncBaseTransport):
     def __init__(self, transport: AsyncBaseTransport, **kwargs):
@@ -425,14 +425,14 @@ def test_eeprom_clear():
 
 ---
 
-## 五、消息编解码与高层协议 (`cio.core.codec` / `dev.bind`)
+## 五、消息编解码与高层协议 (`cio.protocols` / `dev.bind`)
 
 通过将任意底层的字节流 Transport 绑定（`dev.bind(codec)`）为强类型 **`ProtocolTransport`**，将底层散装字节收发自动升级为结构化业务对象通道：
 
 ### 1. 内置 4 大编解码器 (Built-in Codecs)
 
 ```python
-from cio.core.codec import LineCodec, FixedLengthCodec, FramedBinaryCodec, StructCodec
+from cio import LineCodec, FixedLengthCodec, FramedBinaryCodec, StructCodec
 
 # ① 文本行协议 (SCPI 仪器 / NMEA GPS / 文本交互)
 proto = dev.bind(LineCodec(delimiter=b"\n", encoding="utf-8"))
@@ -480,7 +480,7 @@ data_tuple = await proto.read()     # 直接得到解包后的元组 (1, 2, 1000
 只需继承 `BaseCodec` 实现 `encode` 和 `decode` 两个纯函数方法：
 
 ```python
-from cio.core.codec import BaseCodec
+from cio import BaseCodec
 
 class CustomTLVCodec(BaseCodec):
     """自定义 TLV 协议: [TAG 1B][LEN 1B][VALUE]"""
@@ -625,7 +625,7 @@ with cio.Collector("experiment.csv") as col:
 - `dev.write((0x01, 0x02))`
 - `dev.write(0xFF)` （自动识别为 `b"\xFF"`）
 
-### 2. 异常继承树 (`cio.core.exceptions`)
+### 2. 异常继承树 (`cio.exceptions`)
 ```text
 TransportError (基类)
  ├── DriverMissingError (驱动或物理依赖缺失)

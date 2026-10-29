@@ -7,8 +7,8 @@ import abc
 from dataclasses import dataclass
 from typing import Any, Callable, Type
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.exceptions import InvalidUrlError, PythonPackageMissingError, CDllMissingError
+from cio.transports.base import AsyncBaseTransport
+from cio.exceptions import InvalidUrlError, PythonPackageMissingError, CDllMissingError
 
 
 @dataclass

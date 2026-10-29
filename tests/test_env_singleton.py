@@ -7,7 +7,7 @@ import pytest
 
 import cio
 from cio import dev, DeviceConfigError
-from cio.core.env import (
+from cio.env import (
     load_local_dotenv,
     resolve_device_url,
     get_device,
@@ -160,7 +160,7 @@ def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
 def test_device_pool_close_device_and_clear_history(monkeypatch):
     """Verify close_device() / dev.close() and clear_history() manage singleton pool cleanly."""
     monkeypatch.setenv("CIO_DEVICE", "mock://dut_lifecycle")
-    from cio.core.env import _ACTIVE_DEVICES, close_device, clear_history
+    from cio.env import _ACTIVE_DEVICES, close_device, clear_history
 
     reset_devices()
 
@@ -200,7 +200,7 @@ def test_env_nfc_and_short_names_resolution(monkeypatch):
 def test_env_nfc_legacy_fallback_removed(monkeypatch):
     """Verify legacy NFC_PORT without CIO_NFC raises DeviceConfigError (no special hardcoding)."""
     import pytest
-    from cio.core.exceptions import DeviceConfigError
+    from cio.exceptions import DeviceConfigError
     monkeypatch.delenv("CIO_NFC", raising=False)
     monkeypatch.setenv("NFC_PORT", "COM10")
     monkeypatch.setenv("NFC_READER", "clrc663")

@@ -6,10 +6,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
-from cio.core.buffer import FifoBuffer, OverflowPolicy
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.transports.buffer import FifoBuffer, OverflowPolicy
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import ReadTimeoutError, WriteTimeoutError
 
 
 class AsyncStreamTransport(AsyncBaseTransport):

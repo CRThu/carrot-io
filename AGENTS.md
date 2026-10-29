@@ -18,10 +18,14 @@
  5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / CH347 DLL / C DLLs (visa32)
 ```
 
-- `cio/core/`: 核心基类（`base`）、总线契约（`stream`, `packet`, `i2c`, `spi`, `gpio`, `uart`）、环境变量单例代理（`env`）、集中类型转换（`converters`）、时序数据收集器（`collector`）、无界缓冲（`buffer`）、热路径内存日志（`logger`）、工厂与静默探测（`factory`, `registry`）、分级异常（`exceptions`）、协议绑定（`codec`, `protocol`）
-- `cio/composite/`: 硬件协议桥（`carrotbridge`、`i2c` / `spi` / `gpio` 总线桥）、跨机代理（`rpc`）
-- `cio/backends/`: 延迟加载硬件适配器（`socket`, `serial`, `ftdi`, `ch347`, `visa`）
-- `cio/testing/`: 测试组件（`mock` 设备、`verify` 纯粹断言子系统：`check`, `require`, `verify`, `VerificationSession`）
+- **顶层骨架**: `factory.py` (URL 连接工厂 `connect`), `registry.py` (驱动与桥注册中心), `env.py` (环境变量单例 `dev`), `converters.py` (类型归一化边界), `exceptions.py` (异常树)
+- `cio/transports/`: 传输信道与缓冲（基类 `base.py`、异步流 `stream.py`、数据包 `packet.py`、串口抽象 `uart.py`、环形缓冲 `buffer.py`）
+- `cio/bus/`: 硬件总线与引脚抽象（`i2c.py` 总线契约、`spi.py` 总线契约、`gpio.py` 引脚控制器契约）
+- `cio/protocols/`: 应用层报文编解码与协议（通用编解码器 `codec.py`、高层协议包装 `protocol.py`）
+- `cio/trace/`: 硬件运行态追踪与遥测（通信帧与报文追踪 `logger.py`、多通道物理量时序采集 `collector.py`）
+- `cio/composite/`: 硬件协议桥网关（下位机 ASCII 协议网关及其衍生总线适配器 `carrotbridge.py`、跨机代理 `rpc.py`）
+- `cio/backends/`: 物理驱动适配器延迟加载层（`serial`, `socket`, `ftdi`, `ch347`, `visa`）
+- `cio/testing/`: 硬件测试与断言验证子系统（`mock` 设备、`verify` 断言记分板）
 
 ## Build & Test Commands
 
@@ -49,7 +53,7 @@ uv run bump-my-version bump patch           # 小版本升级
    - `from cio import dev` 提供惰性初始化的全局单例代理。自动读取当前工作区 `.env` 或环境变量 `CIO_DEVICE`（或具名设备 `CIO_DEVICE_<NAME>`）。
    - 默认同步调用（`dev.write(...)`, `dev.i2c(...)`, `dev["power"].write(...)`），支持 `close_all_devices()` 安全回收。
 3. **零第三方顶层依赖与分级探测（Zero-Dependency Core & Graceful Probing）**：
-   - `cio.core.*` 必须仅使用 Python 标准库；外部驱动（`pyserial`, `pyftdi`, `pyvisa`）统一在 `cio.backends.*` 中延迟加载。
+   - `cio` 核心层必须仅使用 Python 标准库；外部驱动（`pyserial`, `pyftdi`, `pyvisa`）统一在 `cio.backends.*` 中延迟加载。
    - **探测扫描**（`cio.scan()`）：静默容错 `ImportError` / `OSError`，不中断主流程；
    - **主动连接**（`cio.connect()` / `dev.open()`）：驱动缺失时抛出携带明确安装指引的 `DriverMissingError`（派生自 `PythonPackageMissingError` 或 `CDllMissingError`）。
 4. **瘦基类契约与零抽象泄露（Lean ABC & Zero Abstraction Leakage）**：
@@ -58,7 +62,7 @@ uv run bump-my-version bump patch           # 小版本升级
 5. **严禁危险的软件伪兜底（Zero Dangerous Software Fallbacks）**：
    - 严禁在缺少硬件支持时使用软件业务读写（如用 `read(addr, 1)` 轮询 112 个地址模拟 I2C scan）充当默认兜底。这会破坏从机硬件状态机且因超时累积造成长时间卡死。硬件不支持的功能直接显式抛异常。
 6. **集中式数据转换（Single Source of Converters）**：
-   - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.core.converters` 中维护**。入参统一支持 `BytesLike`（`bytes | bytearray | int | list[int] | tuple[int, ...] target`）并经由 `ensure_bytes` 归一化。严禁在类中挂载冗余静态别名或散装 Hex 转换。
+   - 所有数据类型转换、入参格式化与出参反序列化**统一且仅在 `cio.converters` 中维护**。入参统一支持 `BytesLike`（`bytes | bytearray | int | list[int] | tuple[int, ...] target`）并经由 `ensure_bytes` 归一化。严禁在类中挂载冗余静态别名或散装 Hex 转换。
 7. **热路径零开销与锁的物理本质（Hardware Concurrency & Lock Discipline）**：
    - `write()` 与 `read()` 内部严禁拼接 Hex 字符串或调用控制台打印。
    - 底层流传输层（全双工通道）仅维护物理级的 `_write_lock` 和 `_read_lock` 防止缓冲区交错碎裂。
@@ -74,7 +78,7 @@ uv run bump-my-version bump patch           # 小版本升级
     - 统一遵循标准单 Scheme 规范：`{contract}://{address}?{query}`。
     - 默认串口底座与协议桥：总线协议桥（`i2c://COM3`、`spi://COM3`、`gpio://COM3`、`nfc://COM10`）默认基于串口物理底座通信并挂接相应协议桥。
     - 异构与网络底座显式指定：非串口或网络底座通过查询参数显式指定，如 `i2c://0?transport=ch347`、`spi://192.168.1.100:5025?transport=tcp`、`rpc://192.168.1.50:8000/COM3?transport=serial`。
-    - 领域顶层入口统一声明式表达：`nfc://COM3?driver=pn532`。
+    - 开放扩展与零硬编码：核心工厂不硬编码任何具体业务 scheme（如 `nfc`），外部应用领域协议通过 `registry.register_scheme_factory` 或 `registry.register_bridge` 开放扩展注入。
 11. **多通道时序数据收集与 1D 向量模型（Multi-Channel Time-Series & 1D Vector Model）**：
     - **1D 向量本质**：每个 Tag 是一条随时间独立生长的 1D 时序向量，天然允许不同采样率与非等长数据，严禁引入 2D 矩阵与强行对齐等高开销约束。
     - **单一权威打点入口**：淘汰割裂的方法（如 `push` / `collect_many` / `collect_batch`），所有采集收敛至统一单一方法 `collect(...)`（支持标量、多通道关键字、向量序列自动展开）。

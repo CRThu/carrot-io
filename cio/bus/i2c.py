@@ -6,9 +6,9 @@ from __future__ import annotations
 import abc
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
-from cio.core.converters import BytesLike, ensure_bytes, parse_int
-from cio.core.exceptions import IOOperationError, UnsupportedCapabilityError
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.converters import BytesLike, ensure_bytes, parse_int
+from cio.exceptions import IOOperationError, UnsupportedCapabilityError
 
 
 class AsyncI2cTransport(AsyncBaseTransport):

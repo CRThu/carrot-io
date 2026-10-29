@@ -4,12 +4,12 @@ Unit tests for Backends (TcpTransport, UdpTransport, Serial, FTDI, VISA, USB stu
 import asyncio
 import pytest
 import cio
-from cio.core.exceptions import (
+from cio.exceptions import (
     CDllMissingError,
     DriverMissingError,
     PythonPackageMissingError,
 )
-from cio.core.registry import registry
+from cio.registry import registry
 
 
 def test_registry_silent_probe():
@@ -109,7 +109,7 @@ async def test_udp_transport_integration():
 async def test_serial_transport_mocked_lifecycle():
     from unittest.mock import MagicMock, patch
     from cio.backends.serial import SerialTransport, _scan_serial
-    from cio.core.exceptions import ConnectionError
+    from cio.exceptions import ConnectionError
 
     mock_serial_instance = MagicMock()
     mock_serial_instance.in_waiting = 4
@@ -290,7 +290,7 @@ async def test_ftdi_backends_mocked():
 @pytest.mark.asyncio
 async def test_socket_error_paths():
     from cio.backends.socket import TcpTransport, UdpTransport
-    from cio.core.exceptions import ConnectionError
+    from cio.exceptions import ConnectionError
 
     # TCP connection refused
     tcp = TcpTransport(host="127.0.0.1", port=59999, timeout=0.1)
@@ -313,8 +313,8 @@ async def test_socket_error_paths():
 
 
 def test_custom_backend_registry_robustness():
-    from cio.core.registry import BackendRegistry
-    from cio.core.exceptions import InvalidUrlError
+    from cio.registry import BackendRegistry
+    from cio.exceptions import InvalidUrlError
     from cio.testing.mock import MockTransport
 
     reg = BackendRegistry()

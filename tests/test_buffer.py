@@ -2,8 +2,8 @@
 Unit tests for FifoBuffer and PacketQueue.
 """
 import pytest
-from cio.core.buffer import FifoBuffer, OverflowPolicy, PacketQueue
-from cio.core.exceptions import BufferOverflowError
+from cio.transports.buffer import FifoBuffer, OverflowPolicy, PacketQueue
+from cio.exceptions import BufferOverflowError
 
 
 def test_fifobuffer_basic():

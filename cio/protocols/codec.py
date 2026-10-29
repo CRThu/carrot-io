@@ -7,7 +7,7 @@ import abc
 import struct
 from typing import Any
 
-from cio.core.exceptions import FrameChecksumError
+from cio.exceptions import FrameChecksumError
 
 
 class BaseCodec(abc.ABC):

@@ -9,13 +9,13 @@ import inspect
 import threading
 from typing import TYPE_CHECKING, Any
 
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ReadTimeoutError, UnsupportedCapabilityError, WriteTimeoutError
-from cio.core.logger import IoLogger, LogEntry
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import ReadTimeoutError, UnsupportedCapabilityError, WriteTimeoutError
+from cio.trace.logger import IoLogger, LogEntry
 
 if TYPE_CHECKING:
-    from cio.core.codec import BaseCodec
-    from cio.core.protocol import ProtocolTransport
+    from cio.protocols.codec import BaseCodec
+    from cio.protocols.protocol import ProtocolTransport
 
 
 class SyncTransportWrapper:
@@ -238,7 +238,7 @@ class AsyncBaseTransport(abc.ABC):
 
     def bind(self, codec: BaseCodec) -> ProtocolTransport:
         """Bind a Codec to return a high-level ProtocolTransport."""
-        from cio.core.protocol import ProtocolTransport
+        from cio.protocols.protocol import ProtocolTransport
 
         return ProtocolTransport(self, codec)
 

@@ -6,11 +6,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
-from cio.core.base import DEFAULT_BUFFER_SIZE
-from cio.core.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
-from cio.core.gpio import AsyncGpioPin
-from cio.core.registry import registry
-from cio.core.stream import AsyncStreamTransport
+from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
+from cio.bus.gpio import AsyncGpioPin
+from cio.registry import registry
+from cio.transports.stream import AsyncStreamTransport
 
 
 class MockTransport(AsyncStreamTransport):

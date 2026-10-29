@@ -6,17 +6,17 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import DEFAULT_BUFFER_SIZE
-from cio.core.exceptions import (
+from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.exceptions import (
     ConnectTimeoutError,
     ConnectionError,
     ConnectionRefusedError,
     ReadTimeoutError,
     WriteTimeoutError,
 )
-from cio.core.packet import AsyncPacketTransport
-from cio.core.registry import registry
-from cio.core.stream import AsyncStreamTransport
+from cio.transports.packet import AsyncPacketTransport
+from cio.registry import registry
+from cio.transports.stream import AsyncStreamTransport
 
 
 class TcpTransport(AsyncStreamTransport):

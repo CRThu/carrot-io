@@ -10,7 +10,7 @@
 
 ### 1. 核心痛点
 - **功能割裂**：目前 `carrot-io` 提供了现代化的纯异步/同步双模 HAL、标准 RFC 3986 单 Scheme URI、硬件借用多路复用以及轻量芯片验证断言能力；而 `nfctester`（及上层 `nfcscript`）拥有成熟的 9 层 RFID 协议架构、芯片驱动（PN532/CLRC663）及卡片逻辑（Mifare、NTAG、Type 2），但其底层传输仅硬编码依赖简单的单机串口。
-- **配置分散**：业务验证脚本（如 `fm577_verify`）中往往需要同时在 `.env` 中维护 `CIO_DEVICE`（走 I2C）与 `NFC_PORT` / `NFC_READER`（走 NFC），调用范式不统一，存在历史过渡痕迹。
+- **配置分散**：业务验证脚本（如 `fm577_verify`）中过去往往在 `.env` 中分散维护 `CIO_DEVICE` 与 `NFC_PORT` 等旧别名；现已统一收敛为单一事实来源的 `CIO_DEVICE` 与 `CIO_NFC` 标准环境变量规范。
 
 ### 2. 演进终局
 构建以 `carrot-io` 为纯净硬件通信底座、`nfctester` 为 NFC 领域能力核心的统一硬件测试生态：
@@ -27,7 +27,7 @@
 | :--- | :---: | :--- |
 | **标准 URI 工厂** | ✅ V1.10.1 已落地 | 支持单 Scheme `nfc://{address}?driver={driver}&bus={bus}&transport={transport}` 解析 |
 | **协议桥注册表** | ✅ 已就绪 | `registry.register_bridge("nfc", "pn532", BridgeCls)` 动态挂载与查找机制 |
-| **单例注入门面** | ✅ 已就绪 | `from cio import dev` 原生提供 `dev.nfc` 访问路由；兼容 `CIO_NFC` 与原 `NFC_PORT` 配置 |
+| **单例注入门面** | ✅ 已就绪 | `from cio import dev` 原生提供 `dev.nfc` 访问路由；统一通过 `CIO_NFC` 单例环境变量注入 |
 | **异步/同步双模** | ✅ 已就绪 | 100% 异步核心 + `SyncTransportWrapper`，测试脚本无需手写 `async/await` |
 | **硬件多路复用** | ✅ 已就绪 | 1 对 N 借用协议，同一物理串口可同时派生并安全共用 I2C、GPIO 与 NFC 信道 |
 | **断言验证子系统** | ✅ 已就绪 | `cio.check` / `cio.require` / `cio.verify` 提供位掩码、Hex 对比与看板生成 |

@@ -7,7 +7,7 @@ import pytest
 
 import cio
 from cio.backends.visa import VisaTransport, _probe_visa, _scan_visa
-from cio.core.exceptions import (
+from cio.exceptions import (
     CDllMissingError,
     ConnectionError,
     PythonPackageMissingError,

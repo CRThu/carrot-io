@@ -3,13 +3,13 @@ Unit tests for URL factory & top-level connect API.
 """
 import pytest
 import cio
-from cio.composite.gpio import AsyncGpioBridge
-from cio.composite.i2c import AsyncI2cBridge
+from cio.composite.carrotbridge import AsyncGpioBridge
+from cio.composite.carrotbridge import AsyncI2cBridge
 from cio.composite.rpc import RpcRemoteTransport
-from cio.composite.spi import AsyncSpiBridge
-from cio.core.base import AsyncBaseTransport
-from cio.core.exceptions import InvalidUrlError
-from cio.core.registry import registry
+from cio.composite.carrotbridge import AsyncSpiBridge
+from cio.transports.base import AsyncBaseTransport
+from cio.exceptions import InvalidUrlError
+from cio.registry import registry
 
 
 class DummyNfcBridge(AsyncBaseTransport):
@@ -93,7 +93,7 @@ def test_factory_rpc_proxy_serial():
 
 def test_factory_nfc_scheme_resolution():
     from cio.composite.carrotbridge import CarrotBridge
-    from cio.core.registry import registry
+    from cio.registry import registry
 
     class DummyNfcBridge:
         def __init__(self, transport, **kwargs):

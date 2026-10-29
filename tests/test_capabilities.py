@@ -11,12 +11,12 @@ import cio
 from cio.backends.serial import SerialTransport
 from cio.backends.socket import TcpTransport, UdpTransport
 from cio.composite.carrotbridge import CarrotBridge
-from cio.composite.gpio import AsyncGpioBridge
-from cio.composite.i2c import AsyncI2cBridge
-from cio.composite.spi import AsyncSpiBridge
-from cio.core.base import AsyncBaseTransport
-from cio.core.exceptions import ConnectionError, TransportError, UnsupportedCapabilityError
-from cio.core.gpio import AsyncGpioPin
+from cio.composite.carrotbridge import AsyncGpioBridge
+from cio.composite.carrotbridge import AsyncI2cBridge
+from cio.composite.carrotbridge import AsyncSpiBridge
+from cio.transports.base import AsyncBaseTransport
+from cio.exceptions import ConnectionError, TransportError, UnsupportedCapabilityError
+from cio.bus.gpio import AsyncGpioPin
 from cio.testing.mock import MockGpioPin, MockTransport
 
 

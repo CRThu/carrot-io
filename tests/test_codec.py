@@ -2,13 +2,13 @@
 Unit tests for Codecs (LineCodec, FixedLengthCodec, FramedBinaryCodec, StructCodec).
 """
 import pytest
-from cio.core.codec import (
+from cio.protocols.codec import (
     FixedLengthCodec,
     FramedBinaryCodec,
     LineCodec,
     StructCodec,
 )
-from cio.core.exceptions import FrameChecksumError
+from cio.exceptions import FrameChecksumError
 
 
 def test_line_codec():

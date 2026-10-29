@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import asyncio
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.buffer import PacketQueue
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
+from cio.transports.base import AsyncBaseTransport
+from cio.transports.buffer import PacketQueue
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import ReadTimeoutError, WriteTimeoutError
 
 
 class AsyncPacketTransport(AsyncBaseTransport):

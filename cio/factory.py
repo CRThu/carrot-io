@@ -6,10 +6,10 @@ from __future__ import annotations
 import urllib.parse
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.converters import parse_bool, parse_int
-from cio.core.exceptions import InvalidUrlError
-from cio.core.registry import registry
+from cio.transports.base import AsyncBaseTransport
+from cio.converters import parse_bool, parse_int
+from cio.exceptions import InvalidUrlError
+from cio.registry import registry
 
 
 def resolve_transport_name(address: str, transport: str | None = None, default: str = "serial") -> str:

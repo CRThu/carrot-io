@@ -9,8 +9,8 @@ import os
 import threading
 from typing import Any
 
-from cio.core.exceptions import DeviceConfigError
-from cio.core.factory import connect
+from cio.exceptions import DeviceConfigError
+from cio.factory import connect
 
 _ACTIVE_DEVICES: dict[str, Any] = {}
 _DEVICE_LOCK = threading.Lock()

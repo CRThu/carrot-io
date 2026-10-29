@@ -6,7 +6,7 @@ from __future__ import annotations
 import abc
 from typing import Any, Literal
 
-from cio.core.base import AsyncBaseTransport
+from cio.transports.base import AsyncBaseTransport
 
 
 class AsyncGpioPin(AsyncBaseTransport):

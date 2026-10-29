@@ -10,13 +10,13 @@ import sys
 from importlib.resources import files
 from typing import Any, Literal
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.converters import BytesLike, ensure_bytes, parse_int
-from cio.core.exceptions import CDllMissingError, ConnectionError, IOOperationError
-from cio.core.gpio import AsyncGpioPin
-from cio.core.i2c import AsyncI2cTransport
-from cio.core.registry import registry
-from cio.core.spi import AsyncSpiTransport
+from cio.transports.base import AsyncBaseTransport
+from cio.converters import BytesLike, ensure_bytes, parse_int
+from cio.exceptions import CDllMissingError, ConnectionError, IOOperationError
+from cio.bus.gpio import AsyncGpioPin
+from cio.bus.i2c import AsyncI2cTransport
+from cio.registry import registry
+from cio.bus.spi import AsyncSpiTransport
 
 # --- C 结构体与类型定义 ---
 
@@ -706,7 +706,7 @@ class Ch347GpioPin(AsyncGpioPin):
             if timeout is not None and (asyncio.get_running_loop().time() - start) >= timeout:
                 return False
 
-# --- 注册进入 cio.core.registry ---
+# --- 注册进入 cio.registry ---
 
 registry.register(
     name="ch347",

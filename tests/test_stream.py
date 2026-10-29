@@ -5,10 +5,10 @@ import asyncio
 import gc
 import weakref
 import pytest
-from cio.core.base import AsyncBaseTransport
-from cio.core.exceptions import ReadTimeoutError, WriteTimeoutError
-from cio.core.packet import AsyncPacketTransport
-from cio.core.stream import AsyncStreamTransport
+from cio.transports.base import AsyncBaseTransport
+from cio.exceptions import ReadTimeoutError, WriteTimeoutError
+from cio.transports.packet import AsyncPacketTransport
+from cio.transports.stream import AsyncStreamTransport
 from cio.testing.mock import MockTransport
 
 
@@ -170,10 +170,10 @@ def test_packet_transport_sync():
 
 @pytest.mark.asyncio
 async def test_abstract_base_interfaces_not_implemented():
-    from cio.core.converters import ensure_bytes
-    from cio.core.gpio import AsyncGpioPin
-    from cio.core.i2c import AsyncI2cTransport
-    from cio.core.spi import AsyncSpiTransport
+    from cio.converters import ensure_bytes
+    from cio.bus.gpio import AsyncGpioPin
+    from cio.bus.i2c import AsyncI2cTransport
+    from cio.bus.spi import AsyncSpiTransport
 
 
     class BareGpio(AsyncGpioPin):

@@ -2,7 +2,7 @@
 Unit tests for cio.core.converters (BytesLike, ensure_bytes, format_arg, parse_*).
 """
 import pytest
-from cio.core.converters import (
+from cio.converters import (
     ensure_bytes,
     format_arg,
     parse_bool,

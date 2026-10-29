@@ -1,7 +1,7 @@
 """
 Unit tests for cio.core.exceptions hierarchy and formatting.
 """
-from cio.core.exceptions import (
+from cio.exceptions import (
     CDllMissingError,
     DriverMissingError,
     PythonPackageMissingError,

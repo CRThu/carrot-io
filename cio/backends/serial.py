@@ -6,14 +6,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.core.base import DEFAULT_BUFFER_SIZE
-from cio.core.exceptions import (
+from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.exceptions import (
     CDllMissingError,
     ConnectionError,
     PythonPackageMissingError,
 )
-from cio.core.registry import registry
-from cio.core.uart import AsyncUartTransport
+from cio.registry import registry
+from cio.transports.uart import AsyncUartTransport
 
 
 def _probe_serial() -> bool:

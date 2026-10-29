@@ -6,13 +6,13 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ConnectionError, PythonPackageMissingError
-from cio.core.gpio import AsyncGpioPin
-from cio.core.i2c import AsyncI2cTransport
-from cio.core.registry import registry
-from cio.core.spi import AsyncSpiTransport
-from cio.core.uart import AsyncUartTransport
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import ConnectionError, PythonPackageMissingError
+from cio.bus.gpio import AsyncGpioPin
+from cio.bus.i2c import AsyncI2cTransport
+from cio.registry import registry
+from cio.bus.spi import AsyncSpiTransport
+from cio.transports.uart import AsyncUartTransport
 
 
 def _probe_ftdi() -> bool:

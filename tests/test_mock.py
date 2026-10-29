@@ -3,7 +3,7 @@ Unit tests for MockTransport, MockGpioPin, AsyncBaseTransport, and SyncTransport
 """
 import asyncio
 import pytest
-from cio.core.codec import LineCodec
+from cio.protocols.codec import LineCodec
 from cio.testing.mock import MockGpioPin, MockTransport
 
 

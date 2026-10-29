@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import abc
 
-from cio.core.base import AsyncBaseTransport
-from cio.core.converters import BytesLike, ensure_bytes
+from cio.transports.base import AsyncBaseTransport
+from cio.converters import BytesLike, ensure_bytes
 
 
 class AsyncSpiTransport(AsyncBaseTransport):

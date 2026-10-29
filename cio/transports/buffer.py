@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections import deque
 from enum import Enum
-from cio.core.exceptions import BufferOverflowError
+from cio.exceptions import BufferOverflowError
 
 
 class OverflowPolicy(str, Enum):

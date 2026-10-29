@@ -2,8 +2,8 @@
 Performance benchmarks for FifoBuffer and IoLogger hot paths.
 """
 import time
-from cio.core.buffer import FifoBuffer
-from cio.core.logger import IoLogger
+from cio.transports.buffer import FifoBuffer
+from cio.trace.logger import IoLogger
 
 
 def test_benchmark_fifobuffer_throughput():

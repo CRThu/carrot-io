@@ -3,8 +3,8 @@ UART Serial Protocol Abstraction (AsyncUartTransport).
 """
 from __future__ import annotations
 
-from cio.core.base import DEFAULT_BUFFER_SIZE
-from cio.core.stream import AsyncStreamTransport
+from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.transports.stream import AsyncStreamTransport
 
 
 class AsyncUartTransport(AsyncStreamTransport):

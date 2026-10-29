@@ -3,7 +3,7 @@ Unit tests for IoLogger and LogEntry.
 """
 import io
 import sys
-from cio.core.logger import IoLogger, LogEntry
+from cio.trace.logger import IoLogger, LogEntry
 
 
 def test_io_logger_linear_preservation():

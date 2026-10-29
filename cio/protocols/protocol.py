@@ -6,12 +6,12 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from cio.core.base import SyncTransportWrapper
-from cio.core.exceptions import ReadTimeoutError
+from cio.transports.base import SyncTransportWrapper
+from cio.exceptions import ReadTimeoutError
 
 if TYPE_CHECKING:
-    from cio.core.base import AsyncBaseTransport
-    from cio.core.codec import BaseCodec
+    from cio.transports.base import AsyncBaseTransport
+    from cio.protocols.codec import BaseCodec
 
 
 class ProtocolTransport:

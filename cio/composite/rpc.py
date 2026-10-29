@@ -9,11 +9,11 @@ import base64
 import json
 from typing import Any
 
-from cio.core.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.exceptions import ConnectionError, IOOperationError, ReadTimeoutError, TransportError, WriteTimeoutError
-from cio.core.registry import registry
-from cio.core.stream import AsyncStreamTransport
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.converters import BytesLike, ensure_bytes
+from cio.exceptions import ConnectionError, IOOperationError, ReadTimeoutError, TransportError, WriteTimeoutError
+from cio.registry import registry
+from cio.transports.stream import AsyncStreamTransport
 
 
 class RpcRemoteTransport(AsyncStreamTransport):
@@ -175,7 +175,7 @@ class RpcServer:
 
                     if method == "open":
                         target_url = params.get("url", "")
-                        from cio.core.factory import connect
+                        from cio.factory import connect
 
                         if active_device and active_device.is_open:
                             await active_device.close()
@@ -246,7 +246,7 @@ async def start_rpc_server(host: str = "0.0.0.0", port: int = 8000) -> RpcServer
 
 def _rpc_url_factory(address: str, **kwargs: Any) -> RpcRemoteTransport:
     import urllib.parse
-    from cio.core.factory import resolve_transport_name
+    from cio.factory import resolve_transport_name
 
     if "/" in address:
         host_port, target_path = address.split("/", 1)

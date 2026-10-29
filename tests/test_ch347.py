@@ -21,7 +21,7 @@ from cio.backends.ch347 import (
     _probe_ch347,
     _scan_ch347,
 )
-from cio.core.exceptions import CDllMissingError, ConnectionError, IOOperationError
+from cio.exceptions import CDllMissingError, ConnectionError, IOOperationError
 
 
 def test_ch347_dll_probing():

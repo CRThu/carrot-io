@@ -6,18 +6,18 @@ from __future__ import annotations
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 import cio.composite  # Ensure default bridges register with global registry # noqa: F401
 
-from cio.core.base import AsyncBaseTransport, SyncTransportWrapper, DEFAULT_BUFFER_SIZE
-from cio.core.converters import BytesLike, ensure_bytes
-from cio.core.logger import IoLogger, LogEntry
-from cio.core.stream import AsyncStreamTransport
-from cio.core.packet import AsyncPacketTransport
-from cio.core.uart import AsyncUartTransport
-from cio.core.i2c import AsyncI2cTransport
-from cio.core.spi import AsyncSpiTransport
-from cio.core.gpio import AsyncGpioPin
-from cio.core.protocol import ProtocolTransport
-from cio.core.collector import Collector, DataCollector, DataPoint
-from cio.core.codec import (
+from cio.transports.base import AsyncBaseTransport, SyncTransportWrapper, DEFAULT_BUFFER_SIZE
+from cio.converters import BytesLike, ensure_bytes
+from cio.trace.logger import IoLogger, LogEntry
+from cio.transports.stream import AsyncStreamTransport
+from cio.transports.packet import AsyncPacketTransport
+from cio.transports.uart import AsyncUartTransport
+from cio.bus.i2c import AsyncI2cTransport
+from cio.bus.spi import AsyncSpiTransport
+from cio.bus.gpio import AsyncGpioPin
+from cio.protocols.protocol import ProtocolTransport
+from cio.trace.collector import Collector, DataCollector, DataPoint
+from cio.protocols.codec import (
     BaseCodec,
     LineCodec,
     FixedLengthCodec,
@@ -25,11 +25,11 @@ from cio.core.codec import (
     StructCodec,
 )
 
-from cio.composite.gpio import AsyncGpioBridge
-from cio.composite.i2c import AsyncI2cBridge
-from cio.composite.spi import AsyncSpiBridge
+from cio.composite.carrotbridge import AsyncGpioBridge
+from cio.composite.carrotbridge import AsyncI2cBridge
+from cio.composite.carrotbridge import AsyncSpiBridge
 from cio.composite.rpc import RpcRemoteTransport, RpcServer, start_rpc_server
-from cio.core.exceptions import (
+from cio.exceptions import (
     TransportError,
     DriverMissingError,
     PythonPackageMissingError,
@@ -47,15 +47,15 @@ from cio.core.exceptions import (
     DeviceConfigError,
     UnsupportedCapabilityError,
 )
-from cio.core.env import (
+from cio.env import (
     clear_history,
     close_all_devices,
     close_device,
     dev,
     reset_devices,
 )
-from cio.core.factory import connect
-from cio.core.registry import registry
+from cio.factory import connect
+from cio.registry import registry
 from cio.testing.mock import MockTransport, MockGpioPin
 from cio.testing.verify import (
     CheckResult,

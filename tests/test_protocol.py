@@ -2,8 +2,8 @@
 Unit tests for cio.core.protocol (ProtocolTransport).
 """
 import pytest
-from cio.core.codec import LineCodec
-from cio.core.exceptions import ReadTimeoutError
+from cio.protocols.codec import LineCodec
+from cio.exceptions import ReadTimeoutError
 from cio.testing.mock import MockTransport
 
 
