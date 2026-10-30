@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from cio.transports.base import (
     DEFAULT_BUFFER_SIZE,
+    DEFAULT_PACKET_QUEUE_SIZE,
+    DEFAULT_TIMEOUT,
     AsyncBaseTransport,
     SyncTransportWrapper,
 )
@@ -15,6 +17,8 @@ from cio.transports.uart import AsyncUartTransport
 
 __all__ = [
     "DEFAULT_BUFFER_SIZE",
+    "DEFAULT_PACKET_QUEUE_SIZE",
+    "DEFAULT_TIMEOUT",
     "AsyncBaseTransport",
     "SyncTransportWrapper",
     "FifoBuffer",

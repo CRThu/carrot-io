@@ -139,7 +139,9 @@ class SyncTransportWrapper:
         self.close()
 
 
-DEFAULT_BUFFER_SIZE: int = 16 * 1024 * 1024  # 16 MB default buffer capacity
+DEFAULT_TIMEOUT: float = 2.0  # 2.0 秒通用保底超时（工业级防死等熔断）
+DEFAULT_BUFFER_SIZE: int = 16 * 1024 * 1024  # 16 MB default byte stream buffer capacity
+DEFAULT_PACKET_QUEUE_SIZE: int = 1024  # 1024 帧默认离散报文队列深度（2^10 二进制对齐）
 
 
 class AsyncBaseTransport(abc.ABC):
@@ -150,7 +152,7 @@ class AsyncBaseTransport(abc.ABC):
 
     def __init__(
         self,
-        timeout: float | str | None = None,
+        timeout: float | str | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
         show_hex: bool = True,

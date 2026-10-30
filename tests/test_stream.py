@@ -267,6 +267,88 @@ async def test_stream_transport_query_atomic_lock():
     await mock_st.close()
 
 
+def test_default_timeout_unification():
+    """Verify that DEFAULT_TIMEOUT is 2.0s across all transport and bus abstractions."""
+    import cio
+    from cio.transports.base import DEFAULT_TIMEOUT
+    from cio.backends.serial import SerialTransport
+    from cio.backends.socket import TcpTransport, UdpTransport
+    from cio.composite.carrotbridge import CarrotBridge, AsyncI2cBridge
+
+    assert DEFAULT_TIMEOUT == 2.0
+    assert cio.DEFAULT_TIMEOUT == 2.0
+
+    # 1. 默认缺省均为 2.0s
+    st = SerialTransport(port="COM1")
+    assert st.timeout == 2.0
+
+    tcp = TcpTransport(host="127.0.0.1", port=5025)
+    assert tcp.timeout == 2.0
+
+    udp = UdpTransport(host="127.0.0.1", port=5025)
+    assert udp.timeout == 2.0
+
+    bridge = CarrotBridge(st)
+    assert bridge.timeout == 2.0
+
+    i2c = AsyncI2cBridge(st)
+    assert i2c.timeout == 2.0
+
+    # 2. 快捷构造函数同样默认 2.0s
+    assert cio.serial("COM1").timeout == 2.0
+    assert cio.tcp("127.0.0.1", 5025).timeout == 2.0
+    assert cio.udp("127.0.0.1", 5025).timeout == 2.0
+
+    # 3. 显式传递 None 时允许无超时
+    st_none = SerialTransport(port="COM1", timeout=None)
+    assert st_none.timeout is None
+
+    # 4. 显式传递具体值
+    st_custom = SerialTransport(port="COM1", timeout=0.5)
+    assert st_custom.timeout == 0.5
+
+
+def test_default_buffer_size_and_queue_size_unification():
+    """Verify DEFAULT_BUFFER_SIZE (16MB) and DEFAULT_PACKET_QUEUE_SIZE (1024) across all transports."""
+    import cio
+    from cio.transports.base import DEFAULT_BUFFER_SIZE, DEFAULT_PACKET_QUEUE_SIZE
+    from cio.backends.serial import SerialTransport
+    from cio.backends.socket import TcpTransport, UdpTransport
+    from cio.backends.ftdi import FtdiUartTransport
+    from cio.backends.ch347 import Ch347DeviceTransport
+
+    # 1. 常量权威定义
+    assert DEFAULT_BUFFER_SIZE == 16 * 1024 * 1024
+    assert DEFAULT_PACKET_QUEUE_SIZE == 1024
+    assert cio.DEFAULT_BUFFER_SIZE == 16 * 1024 * 1024
+    assert cio.DEFAULT_PACKET_QUEUE_SIZE == 1024
+
+    # 2. 字节流（Byte Stream）统一继承 16MB
+    st = SerialTransport(port="COM1")
+    assert st.buffer_size == 16 * 1024 * 1024
+
+    tcp = TcpTransport(host="127.0.0.1", port=5025)
+    assert tcp.buffer_size == 16 * 1024 * 1024
+
+    ftdi = FtdiUartTransport()
+    assert ftdi.buffer_size == 16 * 1024 * 1024
+
+    ch347 = Ch347DeviceTransport()
+    assert ch347.buffer_size == 16 * 1024 * 1024
+
+    # 快捷工厂
+    assert cio.serial("COM1").buffer_size == 16 * 1024 * 1024
+    assert cio.tcp("127.0.0.1", 5025).buffer_size == 16 * 1024 * 1024
+    assert cio.ftdi().buffer_size == 16 * 1024 * 1024
+
+    # 3. UDP 作为标准 StreamTransport 同样统一继承 16MB
+    udp = UdpTransport(host="127.0.0.1", port=5025)
+    assert udp.buffer_size == 16 * 1024 * 1024
+    assert cio.udp("127.0.0.1", 5025).buffer_size == 16 * 1024 * 1024
+
+
+
+
 
 
 

@@ -6,7 +6,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.transports.base import (
+    DEFAULT_BUFFER_SIZE,
+    DEFAULT_PACKET_QUEUE_SIZE,
+    DEFAULT_TIMEOUT,
+)
 from cio.exceptions import (
     ConnectTimeoutError,
     ConnectionError,
@@ -29,7 +33,7 @@ class TcpTransport(AsyncStreamTransport):
         host: str = "127.0.0.1",
         port: int = 5025,
         address: str | None = None,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
@@ -105,9 +109,11 @@ class _UdpProtocol(asyncio.DatagramProtocol):
         pass
 
 
-class UdpTransport(AsyncPacketTransport):
+class UdpTransport(AsyncStreamTransport):
     """
-    UDP Datagram Packet Transport.
+    UDP Socket Stream Transport.
+    Buffers datagram payloads into standard FifoBuffer, enabling seamless
+    read_until, read_exact, and query operations.
     """
 
     def __init__(
@@ -115,8 +121,8 @@ class UdpTransport(AsyncPacketTransport):
         host: str = "127.0.0.1",
         port: int = 5025,
         address: str | None = None,
-        timeout: float | None = None,
-        buffer_size: int = 1000,
+        timeout: float | None = DEFAULT_TIMEOUT,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)
@@ -134,6 +140,10 @@ class UdpTransport(AsyncPacketTransport):
 
         self._transport: asyncio.DatagramTransport | None = None
         self._async_queue: asyncio.Queue[bytes] = asyncio.Queue()
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"stream", "udp"})
 
     async def open(self) -> None:
         if self._is_open:
@@ -165,7 +175,7 @@ class UdpTransport(AsyncPacketTransport):
         self._transport.sendto(data)
         return len(data)
 
-    async def _read_impl(self) -> bytes:
+    async def _read_impl(self, nbytes: int = -1) -> bytes:
         if not self._is_open:
             raise ConnectionError("UDP socket not open")
         return await self._async_queue.get()

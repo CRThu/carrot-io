@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.transports.buffer import FifoBuffer, OverflowPolicy
 from cio.converters import BytesLike, ensure_bytes
 from cio.exceptions import ReadTimeoutError, WriteTimeoutError
@@ -19,7 +19,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
 
     def __init__(
         self,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         overflow_policy: OverflowPolicy = OverflowPolicy.DROP_OLDEST,
         trace: bool = False,

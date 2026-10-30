@@ -9,6 +9,7 @@ from typing import Any
 from cio.bus.base import AsyncBaseBus
 from cio.converters import BytesLike, ensure_bytes
 from cio.exceptions import IOOperationError
+from cio.transports.base import DEFAULT_TIMEOUT
 
 
 class AsyncI2cBus(AsyncBaseBus):
@@ -18,7 +19,7 @@ class AsyncI2cBus(AsyncBaseBus):
 
     def __init__(
         self,
-        timeout: float | str | None = None,
+        timeout: float | str | None = DEFAULT_TIMEOUT,
         reg_len: int = 1,
         trace: bool = False,
         **kwargs: Any,

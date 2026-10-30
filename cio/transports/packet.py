@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import asyncio
 
-from cio.transports.base import AsyncBaseTransport
+from cio.transports.base import (
+    DEFAULT_PACKET_QUEUE_SIZE,
+    DEFAULT_TIMEOUT,
+    AsyncBaseTransport,
+)
 from cio.transports.buffer import PacketQueue
 from cio.converters import BytesLike, ensure_bytes
 from cio.exceptions import ReadTimeoutError, WriteTimeoutError
@@ -18,8 +22,8 @@ class AsyncPacketTransport(AsyncBaseTransport):
 
     def __init__(
         self,
-        timeout: float | None = None,
-        buffer_size: int = 1000,
+        timeout: float | None = DEFAULT_TIMEOUT,
+        buffer_size: int = DEFAULT_PACKET_QUEUE_SIZE,
         trace: bool = False,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)

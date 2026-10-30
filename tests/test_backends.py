@@ -97,6 +97,13 @@ async def test_udp_transport_integration():
         resp = await client.read(timeout=2.0)
         assert resp == b"HELLO UDP"
 
+        # 验证 UDP 作为 StreamTransport 支持拼包与按行切割
+        await client.write(b"LINE1\nLINE2\n")
+        l1 = await client.read_until(b"\n", timeout=2.0)
+        assert l1 == b"LINE1\n"
+        l2 = await client.read_until(b"\n", timeout=2.0)
+        assert l2 == b"LINE2\n"
+
 
     transport.close()
 
@@ -153,6 +160,128 @@ async def test_serial_transport_mocked_lifecycle():
         ports = _scan_serial()
         assert len(ports) == 1
         assert ports[0]["port"] == "COM10"
+
+
+@pytest.mark.asyncio
+async def test_serial_read_impl_zero_in_waiting_requests_single_byte():
+    """验证当硬件缓冲区为空 (in_waiting == 0) 时，必须且仅能请求 1 字节（哨兵唤醒），
+    杜绝向 Windows 串口驱动请求大块 (如 4096) 导致触发 50ms 假超时等待。"""
+    from unittest.mock import MagicMock, patch
+    from cio.backends.serial import SerialTransport
+
+    mock_serial = MagicMock()
+    mock_serial.in_waiting = 0
+    mock_serial.read.return_value = b"["
+
+    with patch("serial.Serial", return_value=mock_serial):
+        st = SerialTransport(port="COM99", baud=115200)
+        await st.open()
+
+        # 请求读取 4096 字节（如 read_until 默认传入的 chunk_size）
+        chunk = await st._read_impl(4096)
+
+        # 核心断言：即使 nbytes=4096，在 in_waiting==0 时，传递给底层 read 的必须严格为 1！
+        mock_serial.read.assert_called_with(1)
+        assert chunk == b"["
+
+        await st.close()
+
+
+@pytest.mark.asyncio
+async def test_serial_read_impl_positive_in_waiting_batches_available():
+    """验证当硬件缓冲区已有就绪数据 (in_waiting > 0) 时，应当成块批量读取，保证高吞吐量。"""
+    from unittest.mock import MagicMock, patch
+    from cio.backends.serial import SerialTransport
+
+    mock_serial = MagicMock()
+    mock_serial.in_waiting = 64
+    mock_serial.read.return_value = b"X" * 64
+
+    with patch("serial.Serial", return_value=mock_serial):
+        st = SerialTransport(port="COM99", baud=115200)
+        await st.open()
+
+        # 1. 当请求 4096 但缓冲区只有 64 时，应批量读取 64
+        chunk = await st._read_impl(4096)
+        mock_serial.read.assert_called_with(64)
+        assert len(chunk) == 64
+
+        # 2. 当请求 10 且缓冲区有 64 时，应读取 min(10, 64) = 10
+        mock_serial.read.return_value = b"Y" * 10
+        chunk_small = await st._read_impl(10)
+        mock_serial.read.assert_called_with(10)
+        assert len(chunk_small) == 10
+
+        # 3. 当请求 -1 (读全部) 且缓冲区有 64 时，应直接批量读 64
+        mock_serial.read.return_value = b"Z" * 64
+        chunk_all = await st._read_impl(-1)
+        mock_serial.read.assert_called_with(64)
+        assert len(chunk_all) == 64
+
+        await st.close()
+
+
+@pytest.mark.asyncio
+async def test_serial_read_until_two_phase_pipeline():
+    """验证高层 read_until(b'\\n') 流水线在两阶段流转下的完整闭环：
+    第 1 阶段（缓冲区空）: 请求 1 字节哨兵唤醒，收到首字节；
+    第 2 阶段（缓冲区有数据）: 请求 min(nbytes, in_waiting) 批量拉走剩余数据；
+    最终上层拼接无损且调用序列严格精确。"""
+    from unittest.mock import MagicMock, call, patch
+    from cio.backends.serial import SerialTransport
+
+    mock_serial = MagicMock()
+    # 模拟两阶段的 in_waiting 与 read 返回
+    mock_serial.in_waiting = 0
+
+    def mock_read_side_effect(size):
+        if size == 1:
+            # 首字节到达，同时后续 12 字节瞬间涌入硬件缓冲区
+            mock_serial.in_waiting = 12
+            return b"["
+        elif size == 12:
+            mock_serial.in_waiting = 0
+            return b"RETURN]: 1\r\n"
+        return b""
+
+    mock_serial.read.side_effect = mock_read_side_effect
+
+    with patch("serial.Serial", return_value=mock_serial):
+        st = SerialTransport(port="COM99", baud=115200)
+        await st.open()
+
+        # 上层执行 read_until(b'\n')
+        line = await st.read_until(b"\n", timeout=1.0)
+        assert line == b"[RETURN]: 1\r\n"
+
+        # 核心契约断言：底层调用序列必须严格为先 1 字节哨兵，再 12 字节成块批量拉取！
+        assert mock_serial.read.call_args_list == [call(1), call(12)]
+
+        await st.close()
+
+
+@pytest.mark.asyncio
+async def test_serial_hardware_timeout_graceful_break():
+    """验证当下位机死锁或不回发数据时，底层 read(1) 返回空 b''，
+    上层超时定时器能正确熔断抛出 ReadTimeoutError，杜绝 while 循环死锁。"""
+    from unittest.mock import MagicMock, patch
+    from cio.backends.serial import SerialTransport
+    from cio.exceptions import ReadTimeoutError
+
+    mock_serial = MagicMock()
+    mock_serial.in_waiting = 0
+    # 模拟硬件超时，底层 read(1) 每次都返回空
+    mock_serial.read.return_value = b""
+
+    with patch("serial.Serial", return_value=mock_serial):
+        st = SerialTransport(port="COM99", baud=115200, timeout=0.02)
+        await st.open()
+
+        # 断言能够在设定的超时内安全熔断，抛出 ReadTimeoutError
+        with pytest.raises(ReadTimeoutError):
+            await st.read_until(b"\n", timeout=0.05)
+
+        await st.close()
 
 
 # ==========================================

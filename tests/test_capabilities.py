@@ -32,7 +32,7 @@ def test_capabilities_declaration_across_transports():
     assert ser.sync.capabilities == frozenset({"stream", "uart"})
 
     udp = UdpTransport(host="127.0.0.1", port=5025)
-    assert udp.capabilities == frozenset({"packet"})
+    assert udp.capabilities == frozenset({"stream", "udp"})
 
     cb = CarrotBridge(mock_st)
     assert cb.capabilities == frozenset({"i2c", "spi", "gpio"})

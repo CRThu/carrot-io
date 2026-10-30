@@ -87,23 +87,28 @@ with cio.connect("serial://COM3?baud=115200") as dev:
 
 ## 三、典型硬件场景 (由浅入深)
 
-### 1. 串口与以太网通信 (Serial / TCP)
+### 1. 串口与网络通信 (Serial / TCP / UDP)
 
-支持精确字节读取、定界符截取与超时控制：
+全系列流式通道统一支持精确字节读取、定界符截取与超时控制（默认 2.0s 超时与 16MB 动态安全缓冲区）：
 
 ```python
 import cio
 
-# 串口设备
+# 1. 串口设备
 with cio.serial("COM3", baud=115200, timeout=2.0) as dev:
     dev.write(b"AT+GMR\r\n")
     response = dev.read_until(b"OK\r\n")
     print("AT Response:", response)
 
-# 以太网 TCP 设备 (例如网口仪表或嵌入式设备端口)
+# 2. 以太网 TCP 设备 (例如网口仪表或嵌入式设备端口)
 with cio.tcp("192.168.1.100", 5025, timeout=3.0) as dev:
     dev.write(b"*IDN?\n")
     print("TCP Reply:", dev.read_until(b"\n"))
+
+# 3. 以太网 UDP 设备 (原生享受流式拼包与按行切割能力)
+with cio.udp("192.168.1.100", 5025, timeout=2.0) as dev:
+    dev.write(b"MEAS:VOLT?\n")
+    print("UDP Reply:", dev.read_until(b"\n"))
 ```
 
 ### 2. 示波器与工业仪器控制 (VISA / SCPI)
@@ -284,7 +289,7 @@ with cio.Collector("run.csv") as col:
 无需每次翻阅底层源码与完整手册，核心类名、方法签名与极简用法速查：
 
 ### 1. 物理流传输类 (`AsyncStreamTransport` / `VisaTransport`)
-> 适用于：串口、TCP、VISA 示波器与工业仪器、FTDI
+> 适用于：串口 (Serial)、TCP、UDP、VISA 示波器与工业仪器、FTDI、CH347（全系列统一默认 `timeout=2.0s` 与 `buffer_size=16MB`）
 
 | API 方法 | 概述与说明 | 极简调用示例 |
 |---|---|---|

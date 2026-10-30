@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
-from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.transports.stream import AsyncStreamTransport
 from cio.bus.i2c import AsyncI2cBus
 from cio.bus.spi import AsyncSpiBus
@@ -34,7 +34,7 @@ class CarrotBridge(AsyncBaseTransport):
     def __init__(
         self,
         transport: AsyncBaseTransport,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
         borrowed: bool = False,
@@ -179,7 +179,7 @@ class AsyncI2cBridge(AsyncI2cBus):
         transport: AsyncBaseTransport | CarrotBridge,
         bus: int = 0,
         reg_len: int = 1,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         borrowed: bool | None = None,
         **kwargs: Any,
@@ -254,7 +254,7 @@ class AsyncSpiBridge(AsyncSpiBus):
         cs_pin: AsyncGpioBus | None = None,
         bus: int = 0,
         cs: int = 0,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         borrowed: bool | None = None,
         **kwargs: Any,
@@ -359,16 +359,18 @@ class AsyncGpioBridge(AsyncGpioBus):
         self,
         transport: AsyncBaseTransport | CarrotBridge,
         pin: int | str = 0,
+        timeout: float | None = DEFAULT_TIMEOUT,
+        trace: bool = False,
         borrowed: bool | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__()
+        super().__init__(timeout=timeout, trace=trace)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
             self._borrowed = True if borrowed is None else borrowed
         else:
             self._borrowed = False if borrowed is None else borrowed
-            self._bridge = CarrotBridge(transport, borrowed=self._borrowed, **kwargs)
+            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
         self.logger = self._bridge.logger
         self.pin = pin
 

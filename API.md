@@ -21,7 +21,7 @@
   - [3. I2C 主机总线 (`AsyncI2cBus` / `AsyncI2cBridge`)](#3-i2c-主机总线-asynci2cbus--asynci2cbridge)
   - [4. SPI 全双工总线 (`AsyncSpiBus` / `AsyncSpiBridge`)](#4-spi-全双工总线-asyncspibus--asyncspibridge)
   - [5. GPIO 引脚控制 (`AsyncGpioBus` / `AsyncGpioBridge`)](#5-gpio-引脚控制-asyncgpiobus--asyncgpiobridge)
-  - [6. 有界报文传输 (`AsyncPacketTransport`)](#6-有界报文传输-asyncpackettransport)
+  - [6. UDP 与离散报文传输体系 (`UdpTransport` / `AsyncPacketTransport`)](#6-udp-与离散报文传输体系-udptransport--asyncpackettransport)
 - [四、硬件测试与断言框架 (`cio.testing.Verifier`)](#四硬件测试与断言框架-ciotestingverifier)
 - [五、消息编解码与高层协议 (`cio.protocols` / `dev.bind`)](#五消息编解码与高层协议-cioprotocols--devbind)
 - [六、远程 RPC 硬件代理网关 (`cio.composite.rpc`)](#六远程-rpc-硬件代理网关-ciocompositerpc)
@@ -41,8 +41,8 @@
 | 类型 | URL 示例 | 说明与常用参数 |
 |---|---|---|
 | **原生串口** | `serial://COM3?baud=115200` | PySerial 串口，参数：`baud=`, `parity=N/E/O`, `stopbits=1/2`, `bytesize=8`, `timeout=1.0` |
-| **原生 TCP** | `tcp://192.168.1.100:5025` | 异步 TCP Socket 流，参数：`timeout=`, `buffer_size=` |
-| **原生 UDP** | `udp://192.168.1.100:5025` | 异步 UDP 报文 Socket |
+| **原生 TCP** | `tcp://192.168.1.100:5025` | 异步 TCP Socket 流，参数：`timeout=2.0`, `buffer_size=16MB` |
+| **原生 UDP** | `udp://192.168.1.100:5025` | 异步 UDP 流式 Socket（已归一为流，支持 `read_until`），参数：`timeout=2.0`, `buffer_size=16MB` |
 | **FTDI 控制器** | `ftdi://ftdi:232h/1?baud=115200` | PyFTDI 适配器 |
 | **CH347 底座** | `ch347://0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
 | **I2C 主机总线** | `i2c://COM3?baud=2000000&reg_len=2` | 默认串口走 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `speed=` |
@@ -64,7 +64,8 @@
 > - **异构硬件与网络**：非串口物理层显式指定 `?transport=ch347` 或 `?transport=tcp`；
 > - **通用参数：**
 >   - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
->   - `timeout=2.0`：统一设置默认 I/O 超时（秒）。
+>   - `timeout=2.0`：统一设置默认 I/O 超时（秒），默认全库生效防挂死，支持显式传参或 `timeout=None` 覆盖。
+>   - `buffer_size=16777216`：流传输（Serial / TCP / UDP / VISA / FTDI）默认统一配备 16MB 动态安全缓冲区，零内存空耗。
 
 ### 2. 协议桥注册与扩展 (`cio.register_bridge`)
 
@@ -123,12 +124,12 @@ cio.close_all_devices()         # 批量回收关闭所有单例
 > - **状态守恒**：`dev.close()` 与 `cio.close_device()` 显式关闭设备后自动从缓存池注销，重新调用立即透明创建全新干净连接。
 
 ### 5. 快捷构造函数
-- `cio.serial(port="COM1", baud=115200, **kwargs)`
-- `cio.tcp(host="127.0.0.1", port=5025, **kwargs)`
-- `cio.udp(host="127.0.0.1", port=5025, **kwargs)`
-- `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, **kwargs)`
-- `cio.ch347(index=0, **kwargs)`
-- `cio.visa(resource_name, timeout=None, **kwargs)`
+- `cio.serial(port="COM1", baud=115200, timeout=2.0, buffer_size=16MB, **kwargs)`
+- `cio.tcp(host="127.0.0.1", port=5025, timeout=2.0, buffer_size=16MB, **kwargs)`
+- `cio.udp(host="127.0.0.1", port=5025, timeout=2.0, buffer_size=16MB, **kwargs)`（已升级为流式传输，完整支持按行读取）
+- `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, timeout=2.0, buffer_size=16MB, **kwargs)`
+- `cio.ch347(index=0, timeout=2.0, buffer_size=16MB, **kwargs)`
+- `cio.visa(resource_name, timeout=5.0, buffer_size=16MB, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
 
 ### 6. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
@@ -289,7 +290,7 @@ print(dev.dump_history(limit=10, show_hex=False, show_len=False))
 
 ### 2. 字节流传输 (`AsyncStreamTransport` / `AsyncUartTransport`)
 
-针对 TCP、Serial 串口、FTDI UART 等流式通道提供高级流操作：
+针对 TCP、UDP、Serial 串口、FTDI UART、CH347 等所有流式通道提供高级流操作（全库统一默认 2.0s 超时与 16MB 动态安全缓冲区）：
 
 ```python
 # 同步调用
@@ -369,16 +370,26 @@ is_triggered = await pin.wait_for_edge(edge="rising", timeout=2.0)       # 等�
 
 ---
 
-### 6. 有界报文传输 (`AsyncPacketTransport`)
+### 6. UDP 与离散报文传输体系 (`UdpTransport` / `AsyncPacketTransport`)
 
-针对 UDP Datagram 等有界消息包传输：
+#### ① UDP 原生流式化 (`UdpTransport -> AsyncStreamTransport`)
+在 `carrot-io` 中，UDP 传输通道已全面升级归一为标准的 **`AsyncStreamTransport`**。底层收到的每一个 UDP 数据报有效载荷将自动流入 `FifoBuffer`，支持完整的流式操作（按行截取、按长度截取、原子问答）：
 
 ```python
+# 1. 像操作 TCP / 串口一样使用 UDP，支持任意换行符切分与问答
 async with cio.connect("udp://192.168.1.100:5025") as dev:
-    await dev.write(b"PING")
-    packet = await dev.read()
-    print("Received Packet:", packet)
+    await dev.write(b"*IDN?\n")
+    response_line = await dev.read_until(b"\n", timeout=2.0)
+    print("UDP Reply:", response_line)
+
+# 2. 快捷构造与同步范式
+with cio.udp("192.168.1.100", 5025, timeout=2.0) as dev:
+    dev.write(b"VOLT:MEAS?\n")
+    print("Voltage:", dev.read_until(b"\n"))
 ```
+
+#### ② 专有离散报文包基类 (`AsyncPacketTransport`)
+针对 CANbus 帧、遥测广播等不可流式化的非文本离散报文，可基于 `AsyncPacketTransport` 实现，支持 `DEFAULT_PACKET_QUEUE_SIZE = 1024` 的安全队列深度控制。
 
 
 

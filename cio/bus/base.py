@@ -8,6 +8,7 @@ from __future__ import annotations
 import abc
 from typing import Any
 
+from cio.transports.base import DEFAULT_TIMEOUT
 from cio.trace.logger import IoLogger, LogEntry
 
 
@@ -18,7 +19,7 @@ class AsyncBaseBus(abc.ABC):
 
     def __init__(
         self,
-        timeout: float | str | None = None,
+        timeout: float | str | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         **kwargs: Any,
     ) -> None:

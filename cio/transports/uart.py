@@ -3,7 +3,7 @@ UART Serial Protocol Abstraction (AsyncUartTransport).
 """
 from __future__ import annotations
 
-from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.transports.base import DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.transports.stream import AsyncStreamTransport
 
 
@@ -20,7 +20,7 @@ class AsyncUartTransport(AsyncStreamTransport):
         stopbits: int = 1,
         bytesize: int = 8,
         rtscts: bool = False,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
     ) -> None:
         super().__init__(timeout=timeout, buffer_size=buffer_size)

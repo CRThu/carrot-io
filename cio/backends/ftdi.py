@@ -12,6 +12,7 @@ from cio.bus.gpio import AsyncGpioBus
 from cio.bus.i2c import AsyncI2cBus
 from cio.registry import registry
 from cio.bus.spi import AsyncSpiBus
+from cio.transports.base import DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.transports.uart import AsyncUartTransport
 
 
@@ -56,8 +57,8 @@ class FtdiUartTransport(AsyncUartTransport):
         address: str | None = None,
         baud: int = 115200,
         baudrate: int = 115200,
-        timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        timeout: float | None = DEFAULT_TIMEOUT,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
         actual_url = address if address else url
@@ -125,7 +126,7 @@ class FtdiI2cBus(AsyncI2cBus):
         url: str = "ftdi://ftdi:2232h/1",
         address: str | None = None,
         frequency: float = 100E3,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -196,7 +197,7 @@ class FtdiSpiBus(AsyncSpiBus):
         frequency: float = 1E6,
         mode: int = 0,
         cs_count: int = 1,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout)

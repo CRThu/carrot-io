@@ -6,7 +6,13 @@ from __future__ import annotations
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 import cio.composite  # Ensure default bridges register with global registry # noqa: F401
 
-from cio.transports.base import AsyncBaseTransport, SyncTransportWrapper, DEFAULT_BUFFER_SIZE
+from cio.transports.base import (
+    DEFAULT_BUFFER_SIZE,
+    DEFAULT_PACKET_QUEUE_SIZE,
+    DEFAULT_TIMEOUT,
+    AsyncBaseTransport,
+    SyncTransportWrapper,
+)
 from cio.converters import BytesLike, ensure_bytes
 from cio.trace.logger import IoLogger, LogEntry
 from cio.transports.stream import AsyncStreamTransport
@@ -94,7 +100,7 @@ def register_bridge(
 def tcp(
     host: str = "127.0.0.1",
     port: int = 5025,
-    timeout: float | None = None,
+    timeout: float | None = DEFAULT_TIMEOUT,
     buffer_size: int = DEFAULT_BUFFER_SIZE,
     **kwargs,
 ) -> AsyncStreamTransport:
@@ -107,10 +113,10 @@ def tcp(
 def udp(
     host: str = "127.0.0.1",
     port: int = 5025,
-    timeout: float | None = None,
-    buffer_size: int = 1000,
+    timeout: float | None = DEFAULT_TIMEOUT,
+    buffer_size: int = DEFAULT_BUFFER_SIZE,
     **kwargs,
-) -> AsyncPacketTransport:
+) -> AsyncStreamTransport:
     """Create a UDP transport instance."""
     from cio.backends.socket import UdpTransport
 
@@ -120,7 +126,7 @@ def udp(
 def serial(
     port: str = "COM1",
     baud: int = 115200,
-    timeout: float | None = None,
+    timeout: float | None = DEFAULT_TIMEOUT,
     **kwargs,
 ) -> AsyncUartTransport:
     """Create a Serial (UART) transport instance."""
@@ -132,7 +138,7 @@ def serial(
 def ftdi(
     url: str = "ftdi://ftdi:232h/1",
     baud: int = 115200,
-    timeout: float | None = None,
+    timeout: float | None = DEFAULT_TIMEOUT,
     **kwargs,
 ) -> AsyncUartTransport:
     """Create an FTDI UART transport instance."""
@@ -143,7 +149,7 @@ def ftdi(
 
 def ch347(
     index: int = 0,
-    timeout: float | None = None,
+    timeout: float | None = DEFAULT_TIMEOUT,
     **kwargs,
 ) -> AsyncBaseTransport:
     """Create a CH347 multi-protocol device baseboard transport instance."""
@@ -192,6 +198,9 @@ __all__ = [
     "visa",
     "start_rpc_server",
     # Core Abstractions
+    "DEFAULT_TIMEOUT",
+    "DEFAULT_BUFFER_SIZE",
+    "DEFAULT_PACKET_QUEUE_SIZE",
     "AsyncBaseTransport",
     "AsyncStreamTransport",
     "AsyncPacketTransport",

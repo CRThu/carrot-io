@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import deque
 from enum import Enum
 from cio.exceptions import BufferOverflowError
+from cio.transports.base import DEFAULT_PACKET_QUEUE_SIZE
 
 
 class OverflowPolicy(str, Enum):
@@ -99,7 +100,7 @@ class PacketQueue:
     Queue for framed packet messages preserving boundaries.
     """
 
-    def __init__(self, max_packets: int = 1000) -> None:
+    def __init__(self, max_packets: int = DEFAULT_PACKET_QUEUE_SIZE) -> None:
         self._max_packets = max_packets
         self._queue: deque[bytes] = deque(maxlen=max_packets)
 

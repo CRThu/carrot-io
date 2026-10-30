@@ -10,7 +10,7 @@ import sys
 from importlib.resources import files
 from typing import Any, Literal
 
-from cio.transports.base import AsyncBaseTransport
+from cio.transports.base import AsyncBaseTransport, DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.converters import BytesLike, ensure_bytes, parse_int
 from cio.exceptions import CDllMissingError, ConnectionError, IOOperationError
 from cio.bus.gpio import AsyncGpioBus
@@ -221,8 +221,8 @@ class Ch347DeviceTransport(AsyncBaseTransport):
         self,
         address: str = "0",
         index: int | str = 0,
-        timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        timeout: float | None = DEFAULT_TIMEOUT,
+        buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -274,12 +274,11 @@ class Ch347I2cBus(AsyncI2cBus):
         frequency: int = 400_000,
         reg_len: int = 1,
         borrowed: bool = False,
-        timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout, buffer_size=buffer_size, reg_len=reg_len, trace=trace)
+        super().__init__(timeout=timeout, reg_len=reg_len, trace=trace, **kwargs)
         if isinstance(device, int):
             self.device = Ch347Device.get_or_create(device)
         else:
@@ -489,12 +488,11 @@ class Ch347SpiBus(AsyncSpiBus):
         frequency: int = 15_000_000,
         mode: int = 0,
         borrowed: bool = False,
-        timeout: float | None = None,
-        buffer_size: int = 1024 * 1024,
+        timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(timeout=timeout, buffer_size=buffer_size, trace=trace)
+        super().__init__(timeout=timeout, trace=trace, **kwargs)
         if isinstance(device, int):
             self.device = Ch347Device.get_or_create(device)
         else:

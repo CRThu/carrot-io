@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cio.transports.base import DEFAULT_BUFFER_SIZE
+from cio.transports.base import DEFAULT_BUFFER_SIZE, DEFAULT_TIMEOUT
 from cio.exceptions import (
     CDllMissingError,
     ConnectionError,
@@ -54,7 +54,7 @@ class SerialTransport(AsyncUartTransport):
         baud: int = 115200,
         baudrate: int = 115200,
         address: str | None = None,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         **kwargs: Any,
     ) -> None:
@@ -121,8 +121,11 @@ class SerialTransport(AsyncUartTransport):
         while self._is_open:
             # 优先读取硬件或驱动已就绪的缓冲区数据
             in_w = self._serial.in_waiting
-            count = min(nbytes, in_w) if in_w > 0 else (1 if nbytes <= 0 else min(nbytes, 4096))
-            # 由内核串口驱动阻塞唤醒，杜绝 200Hz 协程 sleep 忙等轮询
+            if in_w > 0:
+                count = min(nbytes, in_w) if nbytes > 0 else in_w
+            else:
+                # 缓冲区为空时仅请求 1 字节（首字节到达即刻唤醒返回，避免 Windows 驱动因索要大块而傻等 timeout）
+                count = 1
             chunk = await loop.run_in_executor(None, self._serial.read, count)
             if chunk:
                 return chunk
