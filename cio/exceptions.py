@@ -80,8 +80,13 @@ class FrameChecksumError(IOOperationError):
     pass
 
 
-class InvalidUrlError(TransportError, ValueError):
-    """Raised when a URL scheme or format is invalid."""
+class InvalidLocatorError(TransportError, ValueError):
+    """Raised when a device locator string format or parameter is invalid."""
+    pass
+
+
+class InvalidUrlError(InvalidLocatorError):
+    """Deprecated alias for InvalidLocatorError."""
     pass
 
 

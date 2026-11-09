@@ -14,7 +14,7 @@
 
 ### 2. 演进终局
 构建以 `carrot-io` 为纯净硬件通信底座、`nfctester` 为 NFC 领域能力核心的统一硬件测试生态：
-- **统一 URI 表达**：上位机仅凭标准 URI（如 `nfc://COM10?driver=pn532` 或 `nfc://COM3?driver=pn532&bus=i2c&addr=0x24`）即可一键完成读卡器挂载；
+- **统一定位符表达**：上位机仅凭标准定位符（如 `nfc[pn532] @ serial:COM10` 或 `nfc[pn532] @ i2c:0,addr=0x24 @ serial:COM3`）即可一键完成读卡器挂载；
 - **全通道能力解锁**：NFC 芯片不再局限于串口，天然获得通过 I2C、SPI、沁恒 CH347、远程 RPC 甚至纯内存 Mock 驱动的能力；
 - **极简 DSL 闭环**：通过 `from cio import dev, check, verify` 一站式完成“上电 -> 寄存器配置 -> 寻卡 -> 卡片认证 -> 读写验证 -> 结构化看板输出”全流程。
 
@@ -25,7 +25,7 @@
 ### 1. `carrot-io` (HAL 底座) 已就绪能力
 | 基础设施模块 | 当前就绪状态 | 为 NFC 提供的能力支撑 |
 | :--- | :---: | :--- |
-| **标准 URI 工厂** | ✅ V1.10.1 已落地 | 支持单 Scheme `nfc://{address}?driver={driver}&bus={bus}&transport={transport}` 解析 |
+| **分层定位符工厂** | ✅ V2.0.0 已落地 | 支持分层定位符 `nfc[pn532] @ serial:COM10` 与原生操作符重载 `@` 解析 |
 | **协议桥注册表** | ✅ 已就绪 | `registry.register_bridge("nfc", "pn532", BridgeCls)` 动态挂载与查找机制 |
 | **单例注入门面** | ✅ 已就绪 | `from cio import dev` 原生提供 `dev.nfc` 访问路由；统一通过 `CIO_NFC` 单例环境变量注入 |
 | **异步/同步双模** | ✅ 已就绪 | 100% 异步核心 + `SyncTransportWrapper`，测试脚本无需手写 `async/await` |
@@ -50,7 +50,7 @@
 
 ```mermaid
 graph TD
-    User["测试脚本 / fm577_verify (from cio import dev, check, verify)"] --> URI["URI 解析工厂 (nfc://COM10?driver=pn532)"]
+    User["测试脚本 / fm577_verify (from cio import dev, check, verify)"] --> URI["定位符解析工厂 (nfc[pn532] @ serial:COM10)"]
     
     subgraph CIO ["carrot-io HAL 核心生态"]
         URI --> Reg["cio.registry (Bridge: 'nfc')"]
@@ -80,7 +80,7 @@ graph TD
 ## 四、分阶段落地实施路线 (Phased Roadmap)
 
 ### 阶段一：传输层契约桥接与 Reader 适配 (Bridge Adapter)
-- **核心目标**：使 `cio.connect("nfc://COM10?driver=pn532")` 能一行代码创建并初始化读卡器。
+- **核心目标**：使 `cio.connect("nfc[pn532] @ serial:COM10")` 能一行代码创建并初始化读卡器。
 - **任务清单**：
   1. **构建 `CioTransportAdapter`**：
      - 在 `nfctester.hardware` 中新增（或在适配层实现）基于 `cio.AsyncBaseTransport` 的传输适配类，实现 `nfctester.Transport` 的契约（`write`, `read`, `flush_input`, `close`）；
@@ -96,9 +96,9 @@ graph TD
 - **核心目标**：彻底打破 NFC 芯片只能直连电脑串口的物理限制，支持通过单片机协议桥（I2C/SPI）、专用芯片（CH347）和网络远程驱动。
 - **任务清单**：
   1. **I2C / SPI 挂接 PN532 支持**：
-     - 当 URL 指定 `nfc://COM3?driver=pn532&bus=i2c&addr=0x24` 时，`factory.py` 先生成 `i2c://COM3` 逻辑通道，再将 I2C 读写契约包装为 PN532 I2C 驱动所需的底层传输；
+     - 当定位符指定 `nfc[pn532] @ i2c:0,addr=0x24 @ serial:COM3` 时，`factory.py` 经由分层组合生成逻辑通道并包装为底层传输；
   2. **CH347 原生硬件总线挂接**：
-     - 支持 `nfc://0?transport=ch347&bus=i2c&driver=pn532`，走高速 USB 硬件直接与射频前端芯片通信；
+     - 支持 `nfc[pn532] @ ch347:0`，走高速 USB 硬件直接与射频前端芯片通信；
   3. **硬件借用与事务排它验证**：
      - 实测在单一串口 `COM3` 上，同时进行传感器 I2C 寄存器读取与 PN532 NFC 寻卡，验证 `CarrotBridge._transaction_lock` 保证多协议零撞车。
 

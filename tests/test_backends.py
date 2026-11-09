@@ -31,7 +31,7 @@ def test_registry_silent_probe():
 
 
 def test_visa_backend_error_handling():
-    dev = cio.connect("visa://NONEXISTENT::1::INSTR")
+    dev = cio.connect("visa:NONEXISTENT::1::INSTR")
     with pytest.raises((PythonPackageMissingError, CDllMissingError, DriverMissingError, ConnectionError)):
         dev.sync.open()
 
@@ -443,7 +443,7 @@ async def test_socket_error_paths():
 
 def test_custom_backend_registry_robustness():
     from cio.registry import BackendRegistry
-    from cio.exceptions import InvalidUrlError
+    from cio.exceptions import InvalidLocatorError
     from cio.testing.mock import MockTransport
 
     reg = BackendRegistry()
@@ -477,7 +477,7 @@ def test_custom_backend_registry_robustness():
     assert reg.scan("bs") == []
 
     # 4. Unknown scheme lookup
-    with pytest.raises(InvalidUrlError):
+    with pytest.raises(InvalidLocatorError):
         reg.get_backend_info("nonexistent_xyz")
 
 

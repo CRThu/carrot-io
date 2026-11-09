@@ -8,7 +8,7 @@ I2C 总线最简教学示例 (I2C Master)
 import asyncio
 import cio
 
-URL = "i2c://COM3?baud=115200"
+URL = "i2c @ serial:COM3,baud=115200"
 SLAVE_ADDR = 0x68  # 7 位从机地址 (如陀螺仪/传感器/EEPROM)
 
 

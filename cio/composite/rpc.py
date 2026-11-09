@@ -245,7 +245,6 @@ async def start_rpc_server(host: str = "0.0.0.0", port: int = 8000) -> RpcServer
 
 
 def _rpc_url_factory(address: str, **kwargs: Any) -> RpcRemoteTransport:
-    import urllib.parse
     from cio.factory import resolve_transport_name
 
     if "/" in address:
@@ -259,7 +258,7 @@ def _rpc_url_factory(address: str, **kwargs: Any) -> RpcRemoteTransport:
     else:
         r_host, r_port = host_port, 8000
 
-    target_url_opt = kwargs.pop("target_url", None)
+    target_url_opt = kwargs.pop("target_url", None) or kwargs.pop("target_locator", None)
     if target_url_opt:
         target_url = str(target_url_opt)
     else:
@@ -268,8 +267,9 @@ def _rpc_url_factory(address: str, **kwargs: Any) -> RpcRemoteTransport:
             or kwargs.pop("transport", None)
             or resolve_transport_name(target_path, default="serial")
         )
-        target_query = ("?" + urllib.parse.urlencode(kwargs)) if kwargs else ""
-        target_url = f"{target_transport}://{target_path}{target_query}"
+        opt_strs = [f"{k}={v}" for k, v in kwargs.items()]
+        opt_suffix = ("," + ",".join(opt_strs)) if opt_strs else ""
+        target_url = f"{target_transport}:{target_path}{opt_suffix}"
 
     return RpcRemoteTransport(target_url=target_url, host=r_host, port=r_port, **kwargs)
 

@@ -50,6 +50,7 @@ from cio.exceptions import (
     BufferOverflowError,
     WriteError,
     FrameChecksumError,
+    InvalidLocatorError,
     InvalidUrlError,
     DeviceConfigError,
     UnsupportedCapabilityError,
@@ -60,8 +61,20 @@ from cio.env import (
     close_device,
     dev,
     reset_devices,
+    resolve_device_locator,
+    resolve_device_url,
 )
 from cio.factory import connect
+from cio.locator import (
+    BusDescriptor,
+    BusFactory,
+    LocatorDescriptor,
+    TransportDescriptor,
+    gpio,
+    i2c,
+    parse_locator,
+    spi,
+)
 from cio.registry import registry
 from cio.testing.mock import MockTransport, MockGpioBus
 from cio.testing.verify import (
@@ -186,10 +199,20 @@ __version__ = "1.10.3"
 __all__ = [
     # Singleton & Env Injection
     "dev",
+    "resolve_device_locator",
+    "resolve_device_url",
     # Factory & Scan
     "connect",
     "scan",
     "register_bridge",
+    "parse_locator",
+    "LocatorDescriptor",
+    "BusDescriptor",
+    "BusFactory",
+    "TransportDescriptor",
+    "i2c",
+    "spi",
+    "gpio",
     "tcp",
     "udp",
     "serial",
@@ -237,6 +260,7 @@ __all__ = [
     "BufferOverflowError",
     "WriteError",
     "FrameChecksumError",
+    "InvalidLocatorError",
     "InvalidUrlError",
     "DeviceConfigError",
     "UnsupportedCapabilityError",

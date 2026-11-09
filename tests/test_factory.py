@@ -1,5 +1,5 @@
 """
-Unit tests for URL factory & top-level connect API.
+Unit tests for layered locator factory & top-level connect API.
 """
 import pytest
 import cio
@@ -8,12 +8,13 @@ from cio.composite.carrotbridge import AsyncI2cBridge
 from cio.composite.rpc import RpcRemoteTransport
 from cio.composite.carrotbridge import AsyncSpiBridge
 from cio.transports.base import AsyncBaseTransport
-from cio.exceptions import InvalidUrlError
+from cio.exceptions import InvalidLocatorError
 from cio.registry import registry
+from cio.testing.mock import MockTransport
 
 
 class DummyNfcBridge(AsyncBaseTransport):
-    """Mock NFC bridge for testing nfc:// URI parsing and resolution."""
+    """Mock NFC bridge for testing layered locator parsing and resolution."""
 
     def __init__(self, transport: AsyncBaseTransport, **kwargs) -> None:
         super().__init__()
@@ -28,26 +29,26 @@ class DummyNfcBridge(AsyncBaseTransport):
 
 
 def test_factory_connect_tcp():
-    dev = cio.connect("tcp://192.168.1.50:5025")
+    dev = cio.connect("tcp:192.168.1.50:5025")
     assert dev.host == "192.168.1.50"
     assert dev.port == 5025
 
 
 def test_factory_connect_serial():
-    dev = cio.connect("serial://COM3?baud=115200")
+    dev = cio.connect("serial:COM3,baud=115200")
     assert dev.port == "COM3"
     assert dev.baudrate == 115200
 
 
 def test_factory_spi_explicit_tcp():
-    dev = cio.connect("spi://192.168.1.100:5025?transport=tcp")
+    dev = cio.connect("spi:0 @ tcp:192.168.1.100:5025")
     assert isinstance(dev, AsyncSpiBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
 
 
-def test_factory_spi_explicit_tcp_query():
-    dev = cio.connect("spi://192.168.1.100:5025?transport=tcp&timeout=2.5")
+def test_factory_spi_explicit_tcp_options():
+    dev = cio.connect("spi:0,timeout=2.5 @ tcp:192.168.1.100:5025")
     assert isinstance(dev, AsyncSpiBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
@@ -55,7 +56,7 @@ def test_factory_spi_explicit_tcp_query():
 
 
 def test_factory_i2c_explicit_tcp():
-    dev = cio.connect("i2c://192.168.1.100:5025?transport=tcp&timeout=1.5&reg_len=2")
+    dev = cio.connect("i2c:0,reg_len=2 @ tcp:192.168.1.100:5025,timeout=1.5")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
@@ -64,73 +65,73 @@ def test_factory_i2c_explicit_tcp():
 
 
 def test_factory_i2c_default_serial():
-    dev = cio.connect("i2c://COM3?baud=115200&reg_len=2")
+    dev = cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=115200")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.port == "COM3"
     assert dev.transport.baudrate == 115200
     assert dev.default_reg_len == 2
 
-    # 任何非显式 transport 的地址默认均走 serial
-    dev2 = cio.connect("gpio://custom_device_name?pin=3")
+    dev2 = cio.connect("gpio:3 @ serial:custom_device_name")
     assert dev2.transport.port == "custom_device_name"
 
 
 def test_factory_rpc_proxy():
-    dev = cio.connect("rpc://192.168.1.100:8000/5025?target_transport=tcp")
+    dev = cio.connect("rpc:192.168.1.100:8000/5025,target_transport=tcp")
     assert isinstance(dev, RpcRemoteTransport)
     assert dev.host == "192.168.1.100"
     assert dev.port == 8000
-    assert dev.target_url == "tcp://5025"
+    assert dev.target_url == "tcp:5025"
 
 
 def test_factory_rpc_proxy_serial():
-    dev = cio.connect("rpc://192.168.1.100:8000/COM1?baud=115200")
+    dev = cio.connect("rpc:192.168.1.100:8000/COM1,baud=115200")
     assert isinstance(dev, RpcRemoteTransport)
     assert dev.host == "192.168.1.100"
     assert dev.port == 8000
-    assert dev.target_url == "serial://COM1?baud=115200"
+    assert dev.target_url == "serial:COM1,baud=115200"
 
 
-def test_factory_nfc_scheme_resolution():
-    from cio.composite.carrotbridge import CarrotBridge
-    from cio.registry import registry
-
-    class DummyNfcBridge:
+def test_factory_nfc_bridge_resolution():
+    class DummyTestNfcBridge:
         def __init__(self, transport, **kwargs):
             self.transport = transport
             self.kwargs = kwargs
 
-    registry.register_bridge("nfc", "test_pn532", DummyNfcBridge)
+    registry.register_bridge("nfc", "test_pn532", DummyTestNfcBridge)
     try:
-        dev = cio.connect("nfc://COM10?driver=test_pn532&baud=115200")
-        assert isinstance(dev, DummyNfcBridge)
+        dev = cio.connect("nfc[test_pn532]:0 @ serial:COM10,baud=115200")
+        assert isinstance(dev, DummyTestNfcBridge)
         assert dev.transport.port == "COM10"
         assert dev.transport.baudrate == 115200
     finally:
         registry._bridges["nfc"].pop("test_pn532", None)
 
 
-def test_factory_composite_plus_deprecated():
-    """Verify that legacy '+' composite schemes raise InvalidUrlError with clear guidance."""
-    with pytest.raises(InvalidUrlError) as excinfo:
+def test_factory_legacy_uri_deprecated():
+    """Verify that legacy '://' URIs raise InvalidLocatorError with clear guidance."""
+    with pytest.raises(InvalidLocatorError) as excinfo:
+        cio.connect("serial://COM3?baud=115200")
+    assert "Legacy URI scheme '://' is deprecated" in str(excinfo.value)
+    assert "@" in str(excinfo.value)
+
+    with pytest.raises(InvalidLocatorError) as excinfo2:
         cio.connect("i2c+serial://COM3")
-    assert "Invalid composite scheme 'i2c+serial'" in str(excinfo.value)
-    assert "i2c://" in str(excinfo.value)
+    assert "Legacy URI scheme '://' is deprecated" in str(excinfo2.value)
 
 
-def test_factory_invalid_url():
-    with pytest.raises(InvalidUrlError):
-        cio.connect("invalid_scheme_xyz://123")
-    with pytest.raises(InvalidUrlError):
-        cio.connect("://malformed")
-    with pytest.raises(InvalidUrlError):
+def test_factory_invalid_locators():
+    with pytest.raises(InvalidLocatorError):
+        cio.connect("invalid_scheme_xyz:123")
+    with pytest.raises(InvalidLocatorError):
+        cio.connect(":malformed")
+    with pytest.raises(InvalidLocatorError):
         cio.connect("")
 
 
 def test_factory_gpio_with_explicit_transport():
-    dev = cio.connect("gpio://dev?transport=mock&pin=5")
+    dev = cio.connect("gpio:5 @ mock:dev")
     assert isinstance(dev, AsyncGpioBridge)
-    assert dev.pin == "5"
+    assert dev.pin == 5
 
 
 def test_top_level_factory_helpers():
@@ -155,8 +156,8 @@ def test_top_level_factory_helpers():
 
 
 def test_gpio_bridge_factory_attributes():
-    """Verify that gpio:// URL returns an object with logger, trace, and lifecycle methods."""
-    pin = cio.connect("gpio://COM3?show_hex=true&trace=on")
+    """Verify that bridged locator returns an object with logger, trace, and lifecycle methods."""
+    pin = cio.connect("gpio:0,show_hex=true,trace=on @ serial:COM3")
     assert hasattr(pin, "logger")
     assert pin.logger.show_hex is True
     assert pin.trace is True
@@ -165,11 +166,68 @@ def test_gpio_bridge_factory_attributes():
     assert hasattr(pin, "is_open")
 
 
-def test_factory_url_query_boolean_options():
-    """Verify that boolean false/0/off options in URL query strings are parsed accurately."""
-    dev = cio.connect("mock://dev?show_hex=false&show_time=0&show_ascii=off&trace=1&max_bytes=128")
+def test_factory_locator_boolean_options():
+    """Verify that boolean false/0/off options in locator options are parsed accurately."""
+    dev = cio.connect("mock:dev,show_hex=false,show_time=0,show_ascii=off,trace=1,max_bytes=128")
     assert dev.logger.show_hex is False
     assert dev.logger.show_time is False
     assert dev.logger.show_ascii is False
     assert dev.trace is True
     assert dev.logger.max_bytes == 128
+
+
+def test_factory_matmul_operator_overloading():
+    """Verify python @ operator overloading on BusDescriptor."""
+    # 1. BusDescriptor @ AsyncBaseTransport
+    ser = cio.serial(port="COM3", baud=115200)
+    bus = cio.i2c(0, reg_len=2) @ ser
+    assert isinstance(bus, AsyncI2cBridge)
+    assert bus.transport.port == "COM3"
+    assert bus.default_reg_len == 2
+
+    # 1b. Indexed BusFactory cio.i2c["cb"](...)
+    bus_cb = cio.i2c["cb"](reg_len=2) @ ser
+    assert isinstance(bus_cb, AsyncI2cBridge)
+    assert bus_cb.default_reg_len == 2
+
+    # 2. BusDescriptor @ str
+    bus2 = cio.i2c(0, reg_len=2) @ "serial:COM4,baud=2000000"
+    assert isinstance(bus2, AsyncI2cBridge)
+    assert bus2.transport.port == "COM4"
+    assert bus2.transport.baudrate == 2000000
+
+    # 3. GpioDescriptor @ MockTransport
+    mock_trans = MockTransport(address="dev")
+    pin = cio.gpio(pin=7) @ mock_trans
+    assert isinstance(pin, AsyncGpioBridge)
+    assert pin.pin == 7
+
+
+def test_factory_omitted_colon_and_single_device():
+    """Verify colon and address can be omitted for single devices or defaults."""
+    # 1. Single device without colon
+    d_mock = cio.connect("mock")
+    assert d_mock.address == ""
+
+    d_ch = cio.connect("ch347")
+    assert d_ch.dev_index == 0
+
+    # 2. Dual tier omitting colon on bus or both sides
+    b1 = cio.connect("i2c @ mock:dev")
+    assert isinstance(b1, AsyncI2cBridge)
+    assert b1.bus == 0
+
+    b2 = cio.connect("i2c,reg_len=2 @ serial:COM3,baud=115200")
+    assert isinstance(b2, AsyncI2cBridge)
+    assert b2.default_reg_len == 2
+
+
+def test_factory_standalone_bus_and_invalid_backend_errors():
+    """Verify bus without physical transport and unknown backend error branches."""
+    with pytest.raises(InvalidLocatorError) as exc1:
+        cio.connect("i2c:0")
+    assert "Bus 'i2c' requires a physical transport" in str(exc1.value)
+
+    with pytest.raises(InvalidLocatorError) as exc2:
+        cio.connect("i2c:0 @ nonexistent_backend_xyz:0")
+    assert "Unsupported or unregistered transport backend" in str(exc2.value)

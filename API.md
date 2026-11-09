@@ -7,7 +7,7 @@
 ## 目录
 
 - [一、顶层入口与连接工厂 (`cio.connect`)](#一顶层入口与连接工厂-cioconnect)
-  - [1. URL Scheme 语法全景表](#1-cioconnecturl-str-kwargs---asyncbasetransport)
+  - [1. 硬件定位器语法全景表](#1-cioconnectlocator-str-kwargs---asyncbasetransport--asyncbasebus)
   - [2. 协议桥注册与扩展 (`cio.register_bridge`)](#2-协议桥注册与扩展-cioregister_bridge)
   - [3. `cio.scan` 设备静默探测](#3-cioscankind-str--none--none---listdict)
   - [4. 极简 DSL 单例与环境变量注入 (`from cio import dev`)](#4-极简-dsl-单例与环境变量注入-from-cio-import-dev)
@@ -33,35 +33,35 @@
 
 ## 一、顶层入口与连接工厂 (`cio.connect`)
 
-### 1. `cio.connect(url: str, **kwargs) -> AsyncBaseTransport | AsyncBaseBus`
-统一 URL 工厂函数。根据 URL Scheme 自动解析并实例化底层驱动或组合协议桥。
+### 1. `cio.connect(locator: str, **kwargs) -> AsyncBaseTransport | AsyncBaseBus`
+统一硬件定位器工厂函数。基于分层定位器语法（Layered Locator Grammar）自动解析并实例化底层驱动与协议桥，摒弃生硬的 Web URL 格式。
 
-#### URL Scheme 语法全景表
+#### 硬件定位器语法全景表
 
-| 类型 | URL 示例 | 说明与常用参数 |
+**标准语法契约**：
+`[bus[bridge]:[channel][,k=v...] @] transport:[target][,k=v...]`
+
+| 类型 | 定位器示例 | 说明与常用参数 |
 |---|---|---|
-| **原生串口** | `serial://COM3?baud=115200` | PySerial 串口，参数：`baud=`, `parity=N/E/O`, `stopbits=1/2`, `bytesize=8`, `timeout=1.0` |
-| **原生 TCP** | `tcp://192.168.1.100:5025` | 异步 TCP Socket 流，参数：`timeout=2.0`, `buffer_size=16MB` |
-| **原生 UDP** | `udp://192.168.1.100:5025` | 异步 UDP 流式 Socket（已归一为流，支持 `read_until`），参数：`timeout=2.0`, `buffer_size=16MB` |
-| **FTDI 控制器** | `ftdi://ftdi:232h/1?baud=115200` | PyFTDI 适配器 |
-| **CH347 底座** | `ch347://0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
-| **I2C 主机总线** | `i2c://COM3?baud=2000000&reg_len=2` | 默认串口走 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `speed=` |
-| **CH347 原生 I2C** | `i2c://0?transport=ch347&frequency=400000` | 显式指定 CH347 硬件原生 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
-| **SPI 全双工总线** | `spi://COM3?cs=0` | 默认串口走 CarrotBridge SPI 主机，参数：`cs=0`, `bus=0` |
-| **SPI (网络桥)** | `spi://192.168.1.100:5025?transport=tcp&clock=10MHz` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
-| **CH347 原生 SPI** | `spi://0?transport=ch347&frequency=15000000&mode=0&cs=0` | 显式指定 CH347 硬件原生 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
-| **GPIO 引脚控制** | `gpio://COM3?pin=1` | 默认串口走 CarrotBridge GPIO 引脚控制 |
-| **CH347 原生 GPIO**| `gpio://0?transport=ch347&pin=3` | 显式指定 CH347 硬件原生 GPIO 引脚控制，参数：`pin=0~7` |
-| **NFC 射频读卡器** | `nfc://COM10` | 默认串口直连 PN532 读卡器（默认 `driver=pn532`） |
-| **NFC 切换驱动/总线** | `nfc://COM4?driver=clrc663` 或 `nfc://COM3?driver=pn532&bus=i2c&addr=0x24` | 指定芯片驱动（`clrc663`）或通过 I2C 挂载 |
-| **VISA 仪器设备** | `visa://USB0::0x2A8D::0x9007::MY63160152::INSTR` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `read_termination=`, `backend=@ni` |
-| **自定义协议桥** | `i2c://COM3?bridge=myproto` | 通过 `cio.register_bridge` 注入的自研或开源协议桥 |
-| **RPC 硬件代理** | `rpc://192.168.1.50:8000/COM1?baud=115200` | 跨网络机器远程硬件透明代理 |
+| **原生串口** | `serial:COM3,baud=115200` | PySerial 串口，参数：`baud=`, `parity=N/E/O`, `stopbits=1/2`, `bytesize=8`, `timeout=1.0` |
+| **原生 TCP** | `tcp:192.168.1.100:5025` | 异步 TCP Socket 流，参数：`timeout=2.0`, `buffer_size=16MB` |
+| **原生 UDP** | `udp:192.168.1.100:5025` | 异步 UDP 流式 Socket（已归一为流，支持 `read_until`），参数：`timeout=2.0`, `buffer_size=16MB` |
+| **FTDI 控制器** | `ftdi:ftdi:232h/1,baud=115200` | PyFTDI 适配器 |
+| **CH347 底座** | `ch347:0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
+| **I2C 协议桥 (串口)** | `i2c:0,reg_len=2 @ serial:COM3,baud=2000000` | 串口底座挂接默认 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `speed=` |
+| **CH347 原生 I2C** | `i2c:0,frequency=400000 @ ch347:0` | 显式指定 CH347 硬件原生 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
+| **SPI 全双工 (串口)** | `spi:0,cs=0 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge SPI 主机，参数：`cs=0`, `bus=0` |
+| **SPI (网络桥)** | `spi:0,clock=10MHz @ tcp:192.168.1.100:5025` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
+| **CH347 原生 SPI** | `spi:0,frequency=15000000,mode=0,cs=0 @ ch347:0` | 显式指定 CH347 硬件原生 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
+| **GPIO 引脚控制** | `gpio:1 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge GPIO 引脚控制 |
+| **CH347 原生 GPIO**| `gpio:3 @ ch347:0` | 显式指定 CH347 硬件原生 GPIO 引脚控制，参数：`pin=0~7` |
+| **VISA 仪器设备** | `visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=5.0` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `read_termination=`, `backend=@ni` |
+| **显式特化协议桥** | `i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000` | 方括号显式指定协议桥（默认内置 `cb` 与 `None`） |
+| **RPC 硬件代理** | `rpc:192.168.1.50:8000/COM1,baud=115200` | 跨网络机器远程硬件透明代理 |
 
-> **标准 URI 规范与底座解析：**
-> - **统一格式**：`{contract}://{address}?{params}`；
-> - **物理信道基准**：总线协议桥（I2C/SPI/GPIO/NFC）默认基于串口底座通信；
-> - **异构硬件与网络**：非串口物理层显式指定 `?transport=ch347` 或 `?transport=tcp`；
+> **分层硬件定位器设计哲学：**
+> - **单 `@` 物理隔离边界**：以 `@` 分界，左侧为高层应用协议/总线逻辑（`i2c:0,reg_len=2`），右侧为物理传输链路（`serial:COM3,baud=2000000`）；
+> - **Python 运算符重载**：支持 `bus = cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000)`；
 > - **通用参数：**
 >   - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
 >   - `timeout=2.0`：统一设置默认 I/O 超时（秒），默认全库生效防挂死，支持显式传参或 `timeout=None` 覆盖。
@@ -69,7 +69,7 @@
 
 ### 2. 协议桥注册与扩展 (`cio.register_bridge`)
 
-支持三方或自研协议（如 Modbus, Firmata, 自定义帧等）以插拔方式注册为通用总线桥：
+支持三方或自研协议（如 Modbus, 自定义帧等）以插拔方式注册为通用总线桥：
 
 ```python
 import cio
@@ -84,8 +84,8 @@ class MyI2cBridge(AsyncBaseTransport):
 # 注册协议桥（支持单名称或别名列表，可设为默认）
 cio.register_bridge("i2c", ["myproto", "mp"], MyI2cBridge, is_default=False)
 
-# 即插即用连接 (通过 ?bridge= 参数指定)
-dev = cio.connect("i2c://COM3?bridge=myproto&baud=115200")
+# 即插即用连接 (通过 [myproto] 语法指定)
+dev = cio.connect("i2c[myproto]:0 @ serial:COM3,baud=115200")
 ```
 
 ### 3. `cio.scan(kind: str | None = None) -> list[dict]`
@@ -97,8 +97,8 @@ dev = cio.connect("i2c://COM3?bridge=myproto&baud=115200")
 
 ```bash
 # 当前工作目录下的 .env
-CIO_DEVICE="i2c://COM3?baud=2000000&reg_len=2"
-CIO_DEVICE_POWER="serial://COM4?baud=9600"
+CIO_DEVICE="i2c:0,reg_len=2 @ serial:COM3,baud=2000000"
+CIO_DEVICE_POWER="serial:COM4,baud=9600"
 ```
 
 ```python
@@ -140,7 +140,7 @@ cio.close_all_devices()         # 批量回收关闭所有单例
 import cio
 
 # 1. 打开单一物理底座 (物理 Owner)
-bridge = cio.connect("serial://COM3?baud=2000000")
+bridge = cio.connect("serial:COM3,baud=2000000")
 
 # 2. 从底座直接衍生各协议逻辑信道 (借用模式 borrowed=True，底层自动共享串口与事务排他锁)
 i2c = bridge.i2c(bus=0, reg_len=2)
@@ -169,8 +169,8 @@ bridge.close()
 ```python
 import cio
 
-# 范式 A：直接使用标准 URI 打开专有总线（内部自动管理底座句柄生命周期）
-with cio.connect("i2c://0?transport=ch347&frequency=400000") as i2c:
+# 范式 A：直接使用分层定位器打开专有总线（内部自动管理底座句柄生命周期）
+with cio.connect("i2c:0,frequency=400000 @ ch347:0") as i2c:
     addrs = i2c.scan()                         # 物理总线硬件级 ACK 扫描
     raw = i2c.read_reg(0x44, 0x2400, nbytes=6) # 硬件原子 Repeated-Start 读寄存器
 
@@ -197,7 +197,7 @@ with cio.ch347(0) as bridge:
 ```python
 import cio
 
-with cio.connect("i2c://COM3?baud=2000000&reg_len=2&trace=on") as dev:
+with cio.connect("i2c:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
     # 直接调用同步方法（无需 await，已内置快速路径优化）
     dev.write_reg(0x57, 0xFFB6, 0xFF)
     data = dev.read_reg(0x57, 0xFFB6, nbytes=1)
@@ -226,7 +226,7 @@ import asyncio
 import cio
 
 async def main():
-    async with cio.connect("i2c://COM3?baud=2000000&reg_len=2&trace=on") as dev:
+    async with cio.connect("i2c:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
         await dev.write_reg(0x57, 0xFFB6, 0xFF)
         val = await dev.read_reg(0x57, 0xFFB6, nbytes=1)
         print("Readback:", val.hex())
@@ -357,7 +357,7 @@ await dev.config_speed(10000000)                                         # 设�
 引脚级电平与边沿控制契约：
 
 ```python
-pin = cio.connect("gpio://COM3?pin=1")
+pin = cio.connect("gpio:1 @ serial:COM3")
 
 await pin.set_high()                                                     # 输出高电平
 await pin.set_low()                                                      # 输出低电平
@@ -377,7 +377,7 @@ is_triggered = await pin.wait_for_edge(edge="rising", timeout=2.0)       # 等�
 
 ```python
 # 1. 像操作 TCP / 串口一样使用 UDP，支持任意换行符切分与问答
-async with cio.connect("udp://192.168.1.100:5025") as dev:
+async with cio.connect("udp:192.168.1.100:5025") as dev:
     await dev.write(b"*IDN?\n")
     response_line = await dev.read_until(b"\n", timeout=2.0)
     print("UDP Reply:", response_line)
@@ -536,8 +536,8 @@ asyncio.run(main())
 ```python
 import cio
 
-# URL 格式: rpc://<RPC服务器IP>:<RPC端口>/<远端硬件参数>?transport=<底层类型>
-url = "rpc://192.168.1.50:8000/COM3?transport=serial&baud=2000000"
+# 定位器格式: rpc:<RPC服务器IP>:<RPC端口>/<远端硬件参数>,transport=<底层类型>
+url = "rpc:192.168.1.50:8000/COM3,transport=serial,baud=2000000"
 
 with cio.connect(url) as dev:
     dev.write(b"Hello Remote Hardware\n")
@@ -652,7 +652,7 @@ TransportError (基类)
  │    ├── BufferOverflowError (缓冲区溢出)
  │    ├── WriteError (写入失败)
  │    └── FrameChecksumError (帧校验 CRC/CheckSum 错误)
- └── InvalidUrlError (URL Scheme 或参数格式错误)
+ ├── InvalidLocatorError (硬件定位器格式错误，InvalidUrlError 为其兼容别名)
 ```
 
 
@@ -697,7 +697,7 @@ if __name__ == "__main__":
 ```python
 import cio
 
-with cio.connect("spi://COM3?baud=2000000&cs=0&trace=on") as dev:
+with cio.connect("spi:0,cs=0,trace=on @ serial:COM3,baud=2000000") as dev:
     # 发送 JEDEC ID 读取指令 0x9F，接收 3 字节厂商与设备 ID
     rx = dev.transfer([0x9F, 0x00, 0x00, 0x00])
     print(f"Manufacturer ID: 0x{rx[1]:02X}, Device ID: 0x{rx[2]:02X}{rx[3]:02X}")
@@ -719,7 +719,7 @@ with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
     scope.write(":AUToscale")
 
 # 方式 B: 原生网络 TCP SCPI 仪器交互
-with cio.connect("tcp://192.168.1.100:5025?trace=on") as dev:
+with cio.connect("tcp:192.168.1.100:5025,trace=on") as dev:
     resp = dev.query(b"*IDN?\n")
     print("Instrument IDN:", resp)
 ```
@@ -731,7 +731,7 @@ import cio
 
 async def main():
     # 1. 打开 CH347 硬件 I2C
-    i2c = cio.connect("i2c://0?transport=ch347&frequency=400000")
+    i2c = cio.connect("i2c:0,frequency=400000 @ ch347:0")
     await i2c.open()
 
     # 扫描总线在线从机 (精准过滤空地址)
@@ -750,8 +750,8 @@ async def main():
     print(f"SHT30 Temperature: {temp:.2f} °C, Humidity: {humi:.2f} %RH")
 
     # 3. 此时双串口（如 COM12 与 COM13）可同时进行全双工收发，零相互阻塞
-    async with cio.connect("serial://COM12?baud=115200") as u1, \
-               cio.connect("serial://COM13?baud=115200") as u2:
+    async with cio.connect("serial:COM12,baud=115200") as u1, \
+               cio.connect("serial:COM13,baud=115200") as u2:
         await u1.write(b"HELLO_CH347_UART")
         echo = await u2.read_exact(16)
         print("UART Loopback Echo:", echo)

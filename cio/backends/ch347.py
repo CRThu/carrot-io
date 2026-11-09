@@ -210,7 +210,7 @@ class Ch347Device:
     def gpio(self, pin: int = 0, **kwargs: Any) -> Ch347GpioBus:
         return Ch347GpioBus(self, pin=pin, borrowed=True, **kwargs)
 
-# --- 顶层物理底座传输抽象 (供 cio.connect("ch347://0") 使用) ---
+# --- 顶层物理底座传输抽象 (供 cio.connect("ch347:0") 或 cio.connect("ch347") 使用) ---
 
 class Ch347DeviceTransport(AsyncBaseTransport):
     """

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Type
 
 from cio.transports.base import AsyncBaseTransport
-from cio.exceptions import InvalidUrlError, PythonPackageMissingError, CDllMissingError
+from cio.exceptions import InvalidLocatorError, PythonPackageMissingError, CDllMissingError
 
 
 @dataclass
@@ -52,7 +52,7 @@ class BackendRegistry:
         """Get registered custom scheme factory."""
         scheme_key = scheme.lower()
         if scheme_key not in self._scheme_factories:
-            raise InvalidUrlError(f"No custom scheme factory registered for '{scheme}'.")
+            raise InvalidLocatorError(f"No custom scheme factory registered for '{scheme}'.")
         return self._scheme_factories[scheme_key]
 
     def register(
@@ -93,7 +93,7 @@ class BackendRegistry:
     def get_backend_info(self, scheme: str) -> BackendInfo:
         backend_name = self._scheme_map.get(scheme.lower())
         if not backend_name or backend_name not in self._backends:
-            raise InvalidUrlError(f"Unsupported or unregistered transport scheme: '{scheme}'")
+            raise InvalidLocatorError(f"Unsupported or unregistered transport backend: '{scheme}'")
         return self._backends[backend_name]
 
     def has_backend(self, name_or_scheme: str) -> bool:
@@ -168,7 +168,7 @@ class BackendRegistry:
         name_key = name.lower()
         if bus_key not in self._bridges or name_key not in self._bridges[bus_key]:
             available = list(self._bridges.get(bus_key, {}).keys())
-            raise InvalidUrlError(
+            raise InvalidLocatorError(
                 f"Cannot set unknown bridge '{name}' as default for bus '{bus}'. Available: {available}"
             )
         self._default_bridges[bus_key] = name_key
@@ -180,18 +180,18 @@ class BackendRegistry:
         """
         bus_key = bus.lower()
         if bus_key not in self._bridges or not self._bridges[bus_key]:
-            raise InvalidUrlError(f"No protocol bridge registered for bus '{bus}'.")
+            raise InvalidLocatorError(f"No protocol bridge registered for bus '{bus}'.")
 
         if name is None or not str(name).strip():
             default_name = self._default_bridges.get(bus_key)
             if not default_name or default_name not in self._bridges[bus_key]:
-                raise InvalidUrlError(f"No default bridge configured for bus '{bus}'.")
+                raise InvalidLocatorError(f"No default bridge configured for bus '{bus}'.")
             return self._bridges[bus_key][default_name]
 
         name_key = name.lower()
         if name_key not in self._bridges[bus_key]:
             available = list(self._bridges[bus_key].keys())
-            raise InvalidUrlError(
+            raise InvalidLocatorError(
                 f"Unsupported or unregistered bridge '{name}' for bus '{bus}'. Available: {available}"
             )
         return self._bridges[bus_key][name_key]

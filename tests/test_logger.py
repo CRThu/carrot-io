@@ -130,7 +130,7 @@ def test_io_logger_configure_and_dump_overrides():
     assert "HELLO ... (16 bytes total)" in d3
 
     # Test cio.connect kwargs pass-through
-    dev = cio.connect("tcp://127.0.0.1:8000", show_hex=False, show_ascii=True, max_bytes=8)
+    dev = cio.connect("tcp:127.0.0.1:8000", show_hex=False, show_ascii=True, max_bytes=8)
     assert dev.logger.show_hex is False
     assert dev.logger.show_ascii is True
     assert dev.logger.max_bytes == 8

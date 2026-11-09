@@ -14,6 +14,7 @@ from cio.exceptions import (
     BufferOverflowError,
     IOOperationError,
     FrameChecksumError,
+    InvalidLocatorError,
     InvalidUrlError,
     DeviceConfigError,
 )
@@ -31,7 +32,8 @@ def test_exception_hierarchy():
     assert issubclass(BufferOverflowError, TransportError)
     assert issubclass(IOOperationError, TransportError)
     assert issubclass(FrameChecksumError, TransportError)
-    assert issubclass(InvalidUrlError, TransportError)
+    assert issubclass(InvalidLocatorError, TransportError)
+    assert issubclass(InvalidUrlError, InvalidLocatorError)
     assert issubclass(DeviceConfigError, TransportError)
 
 

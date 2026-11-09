@@ -8,7 +8,7 @@ SPI 总线最简教学示例 (SPI Master)
 import asyncio
 import cio
 
-URL = "spi://COM3?baud=2000000&cs=0"
+URL = "spi:0,cs=0 @ serial:COM3,baud=2000000"
 
 
 # ==========================================

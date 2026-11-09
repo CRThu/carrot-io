@@ -9,6 +9,7 @@ import cio
 from cio import dev, DeviceConfigError
 from cio.env import (
     load_local_dotenv,
+    resolve_device_locator,
     resolve_device_url,
     get_device,
     reset_devices,
@@ -49,42 +50,43 @@ def test_missing_config_raises_device_config_error():
 
 
 def test_env_resolution_single_and_multi_devices():
-    os.environ["CIO_DEVICE"] = "tcp://127.0.0.1:5001"
-    os.environ["CIO_DEVICE_POWER"] = "tcp://127.0.0.1:5002"
-    os.environ["CIO_DEVICE_SCOPE"] = "tcp://127.0.0.1:5003"
+    os.environ["CIO_DEVICE"] = "tcp:127.0.0.1:5001"
+    os.environ["CIO_DEVICE_POWER"] = "tcp:127.0.0.1:5002"
+    os.environ["CIO_DEVICE_SCOPE"] = "tcp:127.0.0.1:5003"
 
-    assert resolve_device_url("default") == "tcp://127.0.0.1:5001"
-    assert resolve_device_url("") == "tcp://127.0.0.1:5001"
-    assert resolve_device_url("power") == "tcp://127.0.0.1:5002"
-    assert resolve_device_url("POWER") == "tcp://127.0.0.1:5002"
-    assert resolve_device_url("Scope") == "tcp://127.0.0.1:5003"
+    assert resolve_device_locator("default") == "tcp:127.0.0.1:5001"
+    assert resolve_device_url("default") == "tcp:127.0.0.1:5001"
+    assert resolve_device_locator("") == "tcp:127.0.0.1:5001"
+    assert resolve_device_locator("power") == "tcp:127.0.0.1:5002"
+    assert resolve_device_locator("POWER") == "tcp:127.0.0.1:5002"
+    assert resolve_device_locator("Scope") == "tcp:127.0.0.1:5003"
 
 
 def test_local_dotenv_parsing():
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
         tmp.write("# Test .env configuration\n")
-        tmp.write("CIO_DEVICE=\"tcp://127.0.0.1:9001\"\n")
-        tmp.write("export CIO_DEVICE_POWER='tcp://127.0.0.1:9002'\n")
-        tmp.write("   CIO_DEVICE_RELAY = tcp://127.0.0.1:9003  \n")
+        tmp.write("CIO_DEVICE=\"tcp:127.0.0.1:9001\"\n")
+        tmp.write("export CIO_DEVICE_POWER='tcp:127.0.0.1:9002'\n")
+        tmp.write("   CIO_DEVICE_RELAY = tcp:127.0.0.1:9003  \n")
         tmp_name = tmp.name
 
     try:
         loaded = load_local_dotenv(dotenv_path=tmp_name, override=True)
-        assert loaded["CIO_DEVICE"] == "tcp://127.0.0.1:9001"
-        assert loaded["CIO_DEVICE_POWER"] == "tcp://127.0.0.1:9002"
-        assert loaded["CIO_DEVICE_RELAY"] == "tcp://127.0.0.1:9003"
+        assert loaded["CIO_DEVICE"] == "tcp:127.0.0.1:9001"
+        assert loaded["CIO_DEVICE_POWER"] == "tcp:127.0.0.1:9002"
+        assert loaded["CIO_DEVICE_RELAY"] == "tcp:127.0.0.1:9003"
 
-        assert os.environ["CIO_DEVICE"] == "tcp://127.0.0.1:9001"
-        assert resolve_device_url("power") == "tcp://127.0.0.1:9002"
-        assert resolve_device_url("relay") == "tcp://127.0.0.1:9003"
+        assert os.environ["CIO_DEVICE"] == "tcp:127.0.0.1:9001"
+        assert resolve_device_locator("power") == "tcp:127.0.0.1:9002"
+        assert resolve_device_locator("relay") == "tcp:127.0.0.1:9003"
     finally:
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
 
 def test_dev_lazy_proxy_and_getitem():
-    os.environ["CIO_DEVICE"] = "mock://dut"
-    os.environ["CIO_DEVICE_POWER"] = "mock://power"
+    os.environ["CIO_DEVICE"] = "mock:dut"
+    os.environ["CIO_DEVICE_POWER"] = "mock:power"
 
     # Direct top-level import `from cio import dev`
     # Default device write/read
@@ -114,8 +116,8 @@ def test_dev_lazy_proxy_and_getitem():
 
 
 def test_safe_cleanup_and_atexit():
-    os.environ["CIO_DEVICE"] = "mock://dut"
-    os.environ["CIO_DEVICE_POWER"] = "mock://power"
+    os.environ["CIO_DEVICE"] = "mock:dut"
+    os.environ["CIO_DEVICE_POWER"] = "mock:power"
 
     dut_inst = dev["default"]
     pwr_inst = dev["power"]
@@ -135,7 +137,7 @@ def test_safe_cleanup_and_atexit():
 
 @pytest.mark.asyncio
 async def test_dev_async_context_and_raw_access():
-    os.environ["CIO_DEVICE"] = "mock://async_dut"
+    os.environ["CIO_DEVICE"] = "mock:async_dut"
 
     raw_inst = dev.raw
     assert not raw_inst.is_open
@@ -150,7 +152,7 @@ async def test_dev_async_context_and_raw_access():
 
 def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
     """Verify that setting attributes on cio.dev updates the underlying default device."""
-    monkeypatch.setenv("CIO_DEVICE", "mock://dut_setattr")
+    monkeypatch.setenv("CIO_DEVICE", "mock:dut_setattr")
     dev.trace = True
     assert dev.raw.trace is True
     dev.timeout = 4.2
@@ -159,7 +161,7 @@ def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
 
 def test_device_pool_close_device_and_clear_history(monkeypatch):
     """Verify close_device() / dev.close() and clear_history() manage singleton pool cleanly."""
-    monkeypatch.setenv("CIO_DEVICE", "mock://dut_lifecycle")
+    monkeypatch.setenv("CIO_DEVICE", "mock:dut_lifecycle")
     from cio.env import _ACTIVE_DEVICES, close_device, clear_history
 
     reset_devices()
@@ -186,11 +188,11 @@ def test_device_pool_close_device_and_clear_history(monkeypatch):
 
 def test_env_nfc_and_short_names_resolution(monkeypatch):
     """Verify CIO_NFC and short name env resolution (CIO_POWER)."""
-    monkeypatch.setenv("CIO_NFC", "mock://nfc_reader")
-    monkeypatch.setenv("CIO_POWER", "mock://power_supply")
+    monkeypatch.setenv("CIO_NFC", "mock:nfc_reader")
+    monkeypatch.setenv("CIO_POWER", "mock:power_supply")
 
-    assert resolve_device_url("nfc") == "mock://nfc_reader"
-    assert resolve_device_url("power") == "mock://power_supply"
+    assert resolve_device_locator("nfc") == "mock:nfc_reader"
+    assert resolve_device_locator("power") == "mock:power_supply"
 
     # Verify dev.nfc and dev.power attribute resolution
     assert dev.nfc.address == "nfc_reader"

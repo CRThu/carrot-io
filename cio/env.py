@@ -66,9 +66,9 @@ def load_local_dotenv(dotenv_path: str | None = None, override: bool = False) ->
     return loaded
 
 
-def resolve_device_url(name: str = "default") -> str:
+def resolve_device_locator(name: str = "default") -> str:
     """
-    根据设备名称解析对应的环境变量 URL。
+    根据设备名称解析对应的环境变量定位器 (Layered Locator)。
     默认设备: CIO_DEVICE -> CIO_DEVICE_DEFAULT -> CIO_URL
     具名设备 (如 'power'): CIO_DEVICE_POWER
     """
@@ -88,7 +88,7 @@ def resolve_device_url(name: str = "default") -> str:
         raise DeviceConfigError(
             "Default device is not configured. "
             "Please set 'CIO_DEVICE' in your environment or local .env file "
-            '(e.g. CIO_DEVICE="i2c://COM3?reg_len=2").'
+            '(e.g. CIO_DEVICE="i2c:0,reg_len=2 @ serial:COM3,baud=2000000").'
         )
 
     # 具名多设备检索 (支持 CIO_DEVICE_{NAME} 与 CIO_{NAME})
@@ -98,12 +98,15 @@ def resolve_device_url(name: str = "default") -> str:
     if url:
         return url.strip()
 
-
     raise DeviceConfigError(
         f"Device '{norm_name}' is not configured. "
         f"Please set '{env_key}' in your environment or local .env file "
-        f'(e.g. {env_key}="serial://COM4?baud=9600").'
+        f'(e.g. {env_key}="serial:COM4,baud=9600").'
     )
+
+
+# Backward compatibility alias
+resolve_device_url = resolve_device_locator
 
 
 def _cleanup_all_devices() -> None:

@@ -7,10 +7,10 @@
 [![Dependencies](https://img.shields.io/badge/dependencies-0%20hard-brightgreen.svg)](#安装)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-`carrot-io`（导入包名：`cio`）为串口（UART）、工业仪器（VISA / 示波器 / SCPI）、总线外设（I2C / SPI / GPIO）、网络管道（TCP / UDP）及 CH347 多协议硬件底座提供了**统一的标准 RFC 3986 URL 访问模型**与**纯异步核心 + 统一同步调度**双模架构。
+`carrot-io`（导入包名：`cio`）为串口（UART）、工业仪器（VISA / 示波器 / SCPI）、总线外设（I2C / SPI / GPIO）、网络管道（TCP / UDP）及 CH347 多协议硬件底座提供了**纯异步核心 + 统一同步调度**双模架构。
 
 > 📖 **权威文档导航**：
-> - 📘 **[用户态 API 参考与速查手册 (API.md)](API.md)**：包含全部 URL 语法、总线方法签名、断言验证测试模板。
+> - 📘 **[用户态 API 参考与速查手册 (API.md)](API.md)**：包含全套定位符语法、`@` 操作符重载、总线方法签名、断言验证测试模板。
 > - 📄 **[下位机 ASCII 协议规范 (CARROT_PROTOCOL.md)](CARROT_PROTOCOL.md)**：MCU 下位机固件与协议桥交互格式。
 > - 🛠️ **[架构规范与 AI Agent 开发者手册 (AGENTS.md)](AGENTS.md)**：分层解耦、并发锁与底层红线设计原则。
 
@@ -30,7 +30,7 @@
   - [1. 实时通信抓包高亮与故障历史 (`trace` / `dump_history`)](#1-实时通信抓包高亮与故障历史-trace--dump_history)
   - [2. 环境变量单例注入 (`from cio import dev`)](#2-环境变量单例注入-from-cio-import-dev)
   - [3. 芯片与硬件 DSL 验证断言 (`check` / `verify`)](#3-芯片与硬件-dsl-验证断言-check--verify)
-  - [4. 跨网络透明 RPC 代理 (`rpc://`)](#4-跨网络透明-rpc-代理-rpc)
+  - [4. 跨网络透明 RPC 代理 (`rpc`)](#4-跨网络透明-rpc-代理-rpc)
 - [五、核心类与 API 极速速查 (Cheat Sheet)](#五核心类与-api-极速速查-cheat-sheet)
   - [1. 物理流传输类 (`AsyncStreamTransport` / `VisaTransport`)](#1-物理流传输类-asyncstreamtransport--visatransport)
   - [2. I2C 主机总线类 (`AsyncI2cBus` / `AsyncI2cBridge`)](#2-i2c-主机总线类-asynci2cbus--asynci2cbridge)
@@ -64,7 +64,7 @@ pip install "carrot-io[serial,visa]"
 
 ## 二、5 秒极速上手
 
-无论是自动化脚本还是交互式终端，`cio` 支持统一的 URL 连接与**无缝同步/异步自动切换**：
+无论是自动化脚本还是交互式终端，`cio` 支持统一的分层定位符连接、操作符重载与**无缝同步/异步自动切换**：
 
 ```python
 import cio
@@ -73,12 +73,16 @@ import cio
 print(cio.scan())
 
 # 2. 同步模式：直接使用 with 上下文（常规测试脚本最爱，零异步心智负担）
-with cio.connect("serial://COM3?baud=115200") as dev:
+with cio.connect("serial:COM3,baud=115200") as dev:
     dev.write(b"PING\n")
     print(dev.read_until(b"\n"))
 
-# 3. 异步模式：使用 async with 保持原生高性能协程调度
-# async with cio.connect("serial://COM3?baud=115200") as dev:
+# 3. 声明式硬件装配：使用 Python 原生 @ 操作符直连总线与物理底座
+with cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000) as i2c:
+    print("Online I2C Slaves:", [hex(s) for s in i2c.scan()])
+
+# 4. 异步模式：使用 async with 保持原生高性能协程调度
+# async with cio.connect("serial:COM3,baud=115200") as dev:
 #     await dev.write(b"PING\n")
 #     print(await dev.read_until(b"\n"))
 ```
@@ -138,13 +142,13 @@ with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
 
 ### 3. I2C 传感器与 SPI 外设读写
 
-通过标准 URL 语法直连单片机/测试桥底座（默认串口通讯，下位机运行 CarrotBridge 固件）：
+通过分层定位符或操作符重载直连单片机/测试桥底座（默认串口链路，下位机运行 CarrotBridge 固件）：
 
 ```python
 import cio
 
-# I2C 总线操作 (自动推导为串口底层通信)
-with cio.connect("i2c://COM3?baud=2000000&reg_len=2") as i2c:
+# 方式 A：分层定位符字符串
+with cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=2000000") as i2c:
     # 扫描在线从机地址
     slaves = i2c.scan()
     print("Online I2C Slaves:", [hex(s) for s in slaves])
@@ -154,8 +158,8 @@ with cio.connect("i2c://COM3?baud=2000000&reg_len=2") as i2c:
     val = i2c.read_reg(addr=0x57, reg=0x0100, nbytes=2)
     print("Reg 0x0100:", val.hex())
 
-# SPI 总线全双工收发 (例如读取 SPI Flash JEDEC ID)
-with cio.connect("spi://COM3?baud=2000000&cs=0") as spi:
+# 方式 B：Python 强类型操作符重载 (@)（享受 100% IDE 智能感知）
+with cio.spi(cs=0) @ cio.serial("COM3", baud=2000000) as spi:
     # 发送 0x9F 命令，同时读回 3 字节厂商与设备 ID
     rx = spi.transfer([0x9F, 0x00, 0x00, 0x00])
     print(f"SPI Flash ID: 0x{rx[1]:02X}{rx[2]:02X}{rx[3]:02X}")
@@ -166,7 +170,7 @@ with cio.connect("spi://COM3?baud=2000000&cs=0") as spi:
 ```python
 import cio
 
-with cio.connect("gpio://COM3?pin=1") as gpio:
+with cio.connect("gpio:1 @ serial:COM3") as gpio:
     gpio.set_high()
     print("Current Level:", gpio.read_level())
     gpio.toggle()
@@ -180,7 +184,7 @@ with cio.connect("gpio://COM3?pin=1") as gpio:
 import cio
 
 # 打开 CH347 硬件原生 I2C 主机 (400kHz)
-with cio.connect("i2c://0?transport=ch347&frequency=400000") as i2c:
+with cio.connect("i2c:0,frequency=400000 @ ch347:0") as i2c:
     i2c.write(0x44, [0x24, 0x00])
     data = i2c.read(0x44, 6)
     print("Sensor Data:", data.hex())
@@ -192,13 +196,13 @@ with cio.connect("i2c://0?transport=ch347&frequency=400000") as i2c:
 
 ### 1. 实时通信抓包高亮与故障历史 (`trace` / `dump_history`)
 
-无需任何第三方抓包器，在任意 URL 尾部追加 `?trace=on` 即可在控制台实时微秒级高亮打印 TX/RX 报文：
+无需任何第三方抓包器，在定位符中指定 `trace=on` 即可在控制台实时微秒级高亮打印 TX/RX 报文：
 
 ```python
 import cio
 
 # 开启实时报文跟踪
-with cio.connect("serial://COM3?baud=115200&trace=on") as dev:
+with cio.connect("serial:COM3,baud=115200,trace=on") as dev:
     dev.write(b"HELLO")
     dev.read(5)
 
@@ -212,7 +216,7 @@ with cio.connect("serial://COM3?baud=115200&trace=on") as dev:
 
 ```bash
 # 在当前目录 .env 文件中声明
-CIO_DEVICE="visa://USB0::0x2A8D::0x9007::MY63160152::INSTR"
+CIO_DEVICE="visa:USB0::0x2A8D::0x9007::MY63160152::INSTR"
 ```
 
 ```python
@@ -231,7 +235,7 @@ print("Auto-injected device:", idn)
 import cio
 from cio import check, require, verify
 
-with cio.connect("i2c://COM3") as i2c:
+with cio.connect("i2c @ serial:COM3") as i2c:
     verify.reset()
 
     # 1. check 记录断言结果并不中断执行；支持掩码比对
@@ -244,7 +248,7 @@ with cio.connect("i2c://COM3") as i2c:
     verify.summary()
 ```
 
-### 4. 跨网络透明 RPC 代理 (`rpc://`)
+### 4. 跨网络透明 RPC 代理 (`rpc`)
 
 远端主机启动服务，本地直接透明控制远端硬件，协议自动解包转发：
 
@@ -255,7 +259,7 @@ python -c "import asyncio, cio; asyncio.run(cio.start_rpc_server('0.0.0.0', 8000
 
 ```python
 # 本地透明代理调用
-with cio.connect("rpc://192.168.1.50:8000/COM1?baud=115200") as dev:
+with cio.connect("rpc:192.168.1.50:8000/COM1,baud=115200") as dev:
     dev.write(b"HELLO")
 ```
 
@@ -350,7 +354,8 @@ with cio.Collector("run.csv") as col:
 ### 7. 顶层入口与快捷构造 (`cio.*`)
 | 函数 / 对象 | 概述与说明 | 极简调用示例 |
 |---|---|---|
-| `cio.connect(url)` | 万能 URL 工厂，自动解析 Scheme 并挂载对应物理驱动或协议桥 | `cio.connect("i2c://COM3?baud=2000000")` |
+| `cio.connect(locator)` | 万能分层定位符工厂，自动解析分层定位符并挂载对应物理驱动或协议桥 | `cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=2000000")` |
+| `cio.i2c()`, `cio.spi()`, `cio.gpio()` | 强类型总线工厂，支持 Python 原生 `@` 操作符进行硬件声明式装配 | `cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000)` |
 | `cio.scan(kind=None)` | 静默探测并返回系统在线设备列表（可指定 `"visa"`, `"serial"` 等） | `cio.scan("visa")` / `cio.scan()` |
 | `cio.serial()`, `cio.tcp()`, `cio.visa()`, `cio.ch347()` | 显式快捷工厂函数，快速建立特定物理信道 | `cio.visa("USB0::...")` / `cio.serial("COM3")` |
 | `from cio import dev` | 声明式环境变量单例代理，按工作区 `.env` 自动按需连接 | `dev.write(...)` |

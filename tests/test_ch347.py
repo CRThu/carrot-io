@@ -81,22 +81,22 @@ def test_ch347_scan_with_devices():
         assert _scan_ch347() == []
 
 
-def test_ch347_url_factory_parsing():
-    base = cio.connect("ch347://0")
+def test_ch347_locator_factory_parsing():
+    base = cio.connect("ch347:0")
     assert isinstance(base, Ch347DeviceTransport)
     assert base.dev_index == 0
 
-    i2c = cio.connect("i2c://0?transport=ch347&frequency=400000")
+    i2c = cio.connect("i2c:0,frequency=400000 @ ch347:0")
     assert isinstance(i2c, Ch347I2cBus)
     assert i2c.frequency == 400000
 
-    spi = cio.connect("spi://0?transport=ch347&frequency=15000000&mode=0&cs=1")
+    spi = cio.connect("spi:0,frequency=15000000,mode=0,cs=1 @ ch347:0")
     assert isinstance(spi, Ch347SpiBus)
     assert spi.frequency == 15000000
     assert spi.mode == 0
     assert spi.cs == 1
 
-    gpio = cio.connect("gpio://0?transport=ch347&pin=4")
+    gpio = cio.connect("gpio:4 @ ch347:0")
     assert isinstance(gpio, Ch347GpioBus)
     assert gpio.pin == 4
 

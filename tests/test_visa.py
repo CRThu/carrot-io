@@ -16,21 +16,21 @@ from cio.exceptions import (
 )
 
 
-def test_visa_url_resolution():
-    dev1 = cio.connect("visa://USB0::0x2A8D::0x9007::MY63160152::INSTR?timeout=3.5")
+def test_visa_locator_resolution():
+    dev1 = cio.connect("visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=3.5")
     assert isinstance(dev1, VisaTransport)
     assert dev1.resource_name == "USB0::0x2A8D::0x9007::MY63160152::INSTR"
     assert dev1.timeout == 3.5
     assert "visa" in dev1.capabilities
     assert "stream" in dev1.capabilities
 
-    dev2 = cio.connect("gpib://GPIB0::2::INSTR")
+    dev2 = cio.connect("gpib:GPIB0::2::INSTR")
     assert isinstance(dev2, VisaTransport)
     assert dev2.resource_name == "GPIB0::2::INSTR"
     assert dev2.timeout == 5.0  # 工业仪表 5.0s 特殊默认超时
     assert dev2.buffer_size == 16 * 1024 * 1024  # 默认 16MB 缓冲区
 
-    dev3 = cio.connect("vxi://TCPIP0::192.168.1.100::inst0::INSTR")
+    dev3 = cio.connect("vxi:TCPIP0::192.168.1.100::inst0::INSTR")
     assert isinstance(dev3, VisaTransport)
     assert dev3.resource_name == "TCPIP0::192.168.1.100::inst0::INSTR"
     assert dev3.timeout == 5.0

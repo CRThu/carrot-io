@@ -1,22 +1,22 @@
 """
-URL parser and factory for creating transport instances.
+Layered locator parser and factory for creating transport and bus instances.
 """
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
 
-from cio.transports.base import AsyncBaseTransport
 from cio.bus.base import AsyncBaseBus
 from cio.converters import parse_bool, parse_int
-from cio.exceptions import InvalidUrlError
+from cio.exceptions import InvalidLocatorError
+from cio.locator import LocatorDescriptor, parse_locator
 from cio.registry import registry
+from cio.transports.base import AsyncBaseTransport
 
 
 def resolve_transport_name(address: str, transport: str | None = None, default: str = "serial") -> str:
     """
     确定底层物理传输名称：
-    1. 显式指定的 transport 优先（如 ?transport=tcp, ?transport=ch347）
+    1. 显式指定的 transport 优先（如 transport=tcp, transport=ch347）
     2. 特殊虚拟地址 mock / dummy 走 mock
     3. 默认均为 serial
     """
@@ -33,116 +33,137 @@ def infer_transport(address: str, default: str = "serial") -> str:
     return resolve_transport_name(address=address, default=default)
 
 
-def parse_url(url: str) -> tuple[str, str, dict[str, Any]]:
+def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
     """
-    Parse a transport URL into (scheme, target_address, options_dict).
-    Example: 'serial://COM3?baud=115200' -> ('serial', 'COM3', {'baud': '115200'})
-    Example: 'i2c://COM3?reg_len=2' -> ('i2c', 'COM3', {'reg_len': '2'})
-    Example: 'nfc://COM10?driver=pn532' -> ('nfc', 'COM10', {'driver': 'pn532'})
+    Universal transport and bus factory from layered locator specification.
+
+    Layered Locator Grammar:
+        [bus[bridge]:[channel][,k=v...] @] transport:[target][,k=v...]
+
+    Examples:
+      - Single tier (Physical transport):
+          'serial:COM3,baud=115200'
+          'tcp:192.168.1.100:5025'
+          'udp:192.168.1.100:5025'
+          'ch347:0'
+          'mock:dut'
+          'visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=3.5'
+          'rpc:192.168.1.100:8000/COM1,baud=115200'
+      - Dual tier (Bridged bus attached to physical transport):
+          'i2c:0,reg_len=2 @ serial:COM3,baud=2000000'
+          'i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000'
+          'spi:0,cs=1 @ serial:COM3,baud=2000000'
+          'gpio:1 @ serial:COM3,baud=2000000'
+          'i2c:0,frequency=400000 @ ch347:0'
     """
-    if "://" not in url:
-        raise InvalidUrlError(f"URL missing scheme: '{url}'")
+    if not isinstance(locator, str) or not locator.strip():
+        raise InvalidLocatorError(f"Locator cannot be empty, got: {locator!r}")
 
-    scheme_part, rest = url.split("://", 1)
-    scheme = scheme_part.strip().lower()
-    if not scheme:
-        raise InvalidUrlError(f"URL missing scheme: '{url}'")
-
-    if "+" in scheme:
-        raise InvalidUrlError(
-            f"Invalid composite scheme '{scheme}'. "
-            f"Please use standard RFC 3986 URI: e.g. 'i2c://{rest}' or 'nfc://{rest}'."
+    if "://" in locator:
+        raise InvalidLocatorError(
+            f"Legacy URI scheme '://' is deprecated. "
+            f"Please use layered locator syntax: 'bus[bridge]:channel,kwargs @ transport:target,kwargs' "
+            f"(e.g. 'i2c:0,reg_len=2 @ serial:COM3,baud=2000000' or 'serial:COM3,baud=115200'). Got: '{locator}'"
         )
 
-    parsed = urllib.parse.urlparse(f"dummy://{rest}")
-
-    if parsed.netloc:
-        address = parsed.netloc + parsed.path
-    else:
-        address = parsed.path
-
-    query_params: dict[str, Any] = {}
-    if parsed.query:
-        raw_params = urllib.parse.parse_qs(parsed.query)
-        for k, v in raw_params.items():
-            query_params[k] = v[0] if len(v) == 1 else v
-
-    return scheme, address, query_params
-
-
-def connect(url: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
-    """
-    Universal transport factory from URL specification.
-    Supports clean standard URIs:
-      - 'serial://COM3?baud=115200'
-      - 'tcp://192.168.1.100:5025'
-      - 'i2c://COM3?reg_len=2' (default serial transport and cb bridge)
-      - 'i2c://0?transport=ch347&reg_len=2'
-      - 'spi://192.168.1.100:5025?transport=tcp&cs=0'
-      - 'gpio://COM3?pin=1'
-      - 'nfc://COM10?driver=pn532'
-      - 'nfc://COM3?driver=pn532&bus=i2c&addr=0x24'
-      - 'rpc://192.168.1.100:8000/COM1?baud=115200'
-    Supports `?trace=true/on/1` to automatically enable live console tracing.
-    """
-    scheme, address, url_params = parse_url(url)
-    merged_kwargs = {**url_params, **kwargs}
-
-    trace_opt = merged_kwargs.pop("trace", None)
-    trace_val: bool | None = parse_bool(trace_opt) if trace_opt is not None else None
-
-    show_hex_opt = merged_kwargs.pop("show_hex", None)
-    show_ascii_opt = merged_kwargs.pop("show_ascii", None)
-    show_time_opt = merged_kwargs.pop("show_time", None)
-    show_len_opt = merged_kwargs.pop("show_len", None)
-    max_bytes_opt = merged_kwargs.pop("max_bytes", None)
+    desc = parse_locator(locator)
 
     try:
         import cio.composite  # noqa: F401
     except ImportError:
         pass
 
-    # 1. 显式注册的专有 Scheme 工厂（如 rpc:// 或外部第三方扩展协议）
-    if registry.has_scheme_factory(scheme):
-        factory_fn = registry.get_scheme_factory(scheme)
-        transport = factory_fn(address=address, **merged_kwargs)
+    # Extract global trace and logging options
+    logger_opts: dict[str, Any] = {}
+    for opt in ("trace", "show_hex", "show_ascii", "show_time", "show_len", "max_bytes"):
+        val = kwargs.pop(opt, None)
+        if val is None and desc.bus and opt in desc.bus.kwargs:
+            val = desc.bus.kwargs.pop(opt)
+        if val is None and opt in desc.transport.kwargs:
+            val = desc.transport.kwargs.pop(opt)
+        if val is not None:
+            logger_opts[opt] = val
 
-    # 2. 通用硬件总线协议桥 (i2c, spi, gpio 或外部注册的总线协议桥)
-    elif registry.has_bus(scheme):
-        transport_name = resolve_transport_name(address, merged_kwargs.pop("transport", None), default="serial")
-        bridge_name = merged_kwargs.pop("bridge", None) or merged_kwargs.pop("driver", None)
+    if not desc.is_bridged:
+        # 单层物理传输 (Single Tier)
+        trans_kwargs = {**desc.transport.kwargs, **kwargs}
+        transport_name = desc.transport.name
+        address = desc.transport.target
 
-        base_transport = connect(f"{transport_name}://{address}", **merged_kwargs)
-
-        # 硬件原生具备专有总线派生能力且未指定特殊协议桥 (如 ch347.i2c() / ch347.spi())
-        if bridge_name is None and scheme in base_transport.capabilities:
-            factory_method = getattr(base_transport, scheme, None)
-            if callable(factory_method):
-                transport = factory_method(**merged_kwargs)
-            else:
-                bridge_cls = registry.get_bridge_cls(scheme, bridge_name)
-                transport = bridge_cls(base_transport, **merged_kwargs)
+        if registry.has_scheme_factory(transport_name):
+            factory_fn = registry.get_scheme_factory(transport_name)
+            transport = factory_fn(address=address, **trans_kwargs)
+        elif registry.has_backend(transport_name):
+            info = registry.get_backend_info(transport_name)
+            transport = info.factory_cls(address=address, **trans_kwargs)
+        elif registry.has_bus(transport_name):
+            raise InvalidLocatorError(
+                f"Bus '{transport_name}' requires a physical transport "
+                f"(e.g. '{transport_name}:0 @ serial:COM3' or '{transport_name}:0 @ ch347:0')."
+            )
         else:
-            bridge_cls = registry.get_bridge_cls(scheme, bridge_name)
-            transport = bridge_cls(base_transport, **merged_kwargs)
-
-    # 3. 底层物理传输驱动 (serial, tcp, udp, ftdi, ch347, mock...)
+            raise InvalidLocatorError(
+                f"Unsupported or unregistered transport backend: '{transport_name}'."
+            )
     else:
-        info = registry.get_backend_info(scheme)
-        transport = info.factory_cls(address=address, **merged_kwargs)  # type: ignore
+        # 双层协议桥总线 (Dual Tier: 逻辑端与物理端各归各的表达式选项)
+        assert desc.bus is not None
+        base_kwargs = dict(desc.transport.kwargs)
+        bus_kwargs = {**desc.bus.kwargs, **kwargs}
+
+        if "timeout" in bus_kwargs and "timeout" not in base_kwargs:
+            base_kwargs["timeout"] = bus_kwargs["timeout"]
+
+        # 映射 channel
+        if desc.bus.name == "gpio":
+            if "pin" not in bus_kwargs:
+                bus_kwargs["pin"] = desc.bus.channel
+        else:
+            if "bus" not in bus_kwargs and "channel" not in bus_kwargs:
+                bus_kwargs["bus"] = desc.bus.channel
+
+        base_name = desc.transport.name
+        base_target = desc.transport.target
+
+        # 1. 实例化底层物理底座
+        if registry.has_scheme_factory(base_name):
+            factory_fn = registry.get_scheme_factory(base_name)
+            base_transport = factory_fn(address=base_target, **base_kwargs)
+        elif registry.has_backend(base_name):
+            info = registry.get_backend_info(base_name)
+            base_transport = info.factory_cls(address=base_target, **base_kwargs)
+        else:
+            raise InvalidLocatorError(
+                f"Unsupported or unregistered transport backend: '{base_name}'."
+            )
+
+        # 2. 硬件原生总线能力探测 (如 ch347.i2c() / ch347.spi())
+        bus_name = desc.bus.name
+        bridge_name = desc.bus.bridge
+
+        if bridge_name is None and bus_name in getattr(base_transport, "capabilities", frozenset()):
+            factory_method = getattr(base_transport, bus_name, None)
+            if callable(factory_method):
+                transport = factory_method(**bus_kwargs)
+            else:
+                bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
+                transport = bridge_cls(base_transport, **bus_kwargs)
+        else:
+            bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
+            transport = bridge_cls(base_transport, **bus_kwargs)
 
     # 统一挂载跟踪与日志配置 (基于 AsyncBaseTransport 核心契约)
-    if trace_val is not None:
-        transport.trace = trace_val
-    if show_hex_opt is not None:
-        transport.logger.show_hex = parse_bool(show_hex_opt)
-    if show_ascii_opt is not None:
-        transport.logger.show_ascii = parse_bool(show_ascii_opt)
-    if show_time_opt is not None:
-        transport.logger.show_time = parse_bool(show_time_opt)
-    if show_len_opt is not None:
-        transport.logger.show_len = parse_bool(show_len_opt)
-    if max_bytes_opt is not None:
-        transport.logger.max_bytes = parse_int(max_bytes_opt, default=64)
+    if "trace" in logger_opts:
+        transport.trace = parse_bool(logger_opts["trace"])
+    if "show_hex" in logger_opts:
+        transport.logger.show_hex = parse_bool(logger_opts["show_hex"])
+    if "show_ascii" in logger_opts:
+        transport.logger.show_ascii = parse_bool(logger_opts["show_ascii"])
+    if "show_time" in logger_opts:
+        transport.logger.show_time = parse_bool(logger_opts["show_time"])
+    if "show_len" in logger_opts:
+        transport.logger.show_len = parse_bool(logger_opts["show_len"])
+    if "max_bytes" in logger_opts:
+        transport.logger.max_bytes = parse_int(logger_opts["max_bytes"], default=64)
 
     return transport

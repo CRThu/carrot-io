@@ -8,7 +8,7 @@
 import asyncio
 import cio
 
-URL = "serial://COM3?baud=115200"
+URL = "serial:COM3,baud=115200"
 
 
 # 1. 异步原生模式 (推荐)

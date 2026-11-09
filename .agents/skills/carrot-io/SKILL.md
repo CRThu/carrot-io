@@ -12,29 +12,28 @@ description: >-
 
 ---
 
-## 1. 标准 URL 体系 (RFC 3986 Standard URIs)
+## 1. 分层硬件定位器体系 (Layered Hardware Locators)
 
-统一遵循标准单 Scheme 格式：`{contract}://{address}?{params}`。总线协议桥默认基于串口物理底座，异构硬件或网络端点显式通过 `?transport=` 指定。
+遵循分层语法格式：`[bus[bridge]:[channel][,k=v...] @] transport:[target][,k=v...]`。总线协议桥通过 `@` 挂接在底层物理传输信道上，并支持 Python 对象 `@` 运算符重载。
 
-| 目标总线 / 领域 | 标准 URL 示例 | 底座与参数说明 |
+| 目标总线 / 领域 | 分层定位器示例 | 底座与参数说明 |
 | :--- | :--- | :--- |
-| **I2C 总线** | `i2c://COM3?baud=2000000&reg_len=2` | 默认串口底座并挂接 CarrotBridge；`reg_len` 指定默认寄存器地址字节长 |
-| **I2C (专用芯片)** | `i2c://0?transport=ch347&frequency=400000` | 显式指定沁恒 CH347 高速硬件 I2C 后端 |
-| **SPI 总线** | `spi://COM3?baud=2000000&cs=0` | 默认串口底座；`cs` 指定片选引脚编号 |
-| **SPI (网络桥)** | `spi://192.168.1.100:5025?transport=tcp&clock=10MHz` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
-| **GPIO 引脚** | `gpio://COM3?pin=1` | 默认串口底座；返回 `AsyncGpioBus` 引脚句柄 |
-| **原始串口流** | `serial://COM3?baud=115200` | 原生全双工串口通信管道 |
-| **TCP / SCPI** | `tcp://192.168.1.100:5025` | 原生 TCP 网络字节流 |
-| **UDP 通信流** | `udp://192.168.1.100:5025` | 原生 UDP 流式 Socket（支持 `read_until`） |
-| **NFC 读卡器** | `nfc://COM3?driver=pn532` | 统一 NFC 入口（支持 `pn532`, `clrc663`） |
-| **远程 RPC 代理** | `rpc://192.168.1.50:8000/COM1?baud=115200` | 跨网络控制远程主机串口硬件 |
-| **虚拟测试** | `mock://` 或 `i2c://mock` | 纯软件 Mock 内存设备，用于单元测试与 CI |
+| **I2C 总线** | `i2c:0,reg_len=2 @ serial:COM3,baud=2000000` | 串口底座并挂接默认 CarrotBridge；`reg_len` 指定默认寄存器地址字节长 |
+| **I2C (专用芯片)** | `i2c:0,frequency=400000 @ ch347:0` | 显式指定沁恒 CH347 高速硬件原生 I2C 后端 |
+| **SPI 总线** | `spi:0,cs=0 @ serial:COM3,baud=2000000` | 串口底座；`cs` 指定片选引脚编号 |
+| **SPI (网络桥)** | `spi:0,clock=10MHz @ tcp:192.168.1.100:5025` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
+| **GPIO 引脚** | `gpio:1 @ serial:COM3,baud=2000000` | 串口底座；返回 `AsyncGpioBus` 引脚句柄 |
+| **原始串口流** | `serial:COM3,baud=115200` | 原生全双工串口通信管道 |
+| **TCP / SCPI** | `tcp:192.168.1.100:5025` | 原生 TCP 网络字节流 |
+| **UDP 通信流** | `udp:192.168.1.100:5025` | 原生 UDP 流式 Socket（支持 `read_until`） |
+| **远程 RPC 代理** | `rpc:192.168.1.50:8000/COM1,baud=115200` | 跨网络控制远程主机串口硬件 |
+| **虚拟测试** | `mock:dut` 或 `i2c:0 @ mock:dut` | 纯软件 Mock 内存设备，用于单元测试与 CI |
 
-> **通用查询参数**：
+> **通用参数**：
 > - `trace=on`：启用热路径内存日志追踪（不中断热路径，可通过 `dev.history` 调阅）。
 > - `timeout=2.0`：统一 I/O 超时（秒，全库默认 2.0s 防挂死）。
 > - `buffer_size=16777216`：流式通信默认 16MB 动态安全缓冲区。
-> - `bridge=cb`（默认）或自定义协议桥名称。
+> - `bus[cb]:channel`：方括号内显式声明协议桥（默认只内置 `cb` 与 `None`）。
 
 ---
 
@@ -44,8 +43,8 @@ description: >-
 
 ### ① 配置文件 `.env`
 ```bash
-CIO_DEVICE="i2c://COM3?baud=2000000&reg_len=2&trace=on"
-CIO_DEVICE_POWER="serial://COM4?baud=9600"
+CIO_DEVICE="i2c:0,reg_len=2,trace=on @ serial:COM3,baud=2000000"
+CIO_DEVICE_POWER="serial:COM4,baud=9600"
 ```
 
 ### ② 验证脚本
@@ -81,7 +80,7 @@ verify.summary()
 - **同步测试（日常脚本与交互）**：
   ```python
   import cio
-  with cio.connect("i2c://COM3?baud=2000000") as dev:
+  with cio.connect("i2c:0 @ serial:COM3,baud=2000000") as dev:
       data = dev.read_reg(0x57, 0xFFB0, 1)  # 直接调用，内部由专用 Loop 调度
   ```
 - **异步高并发（服务与网关）**：
@@ -89,7 +88,7 @@ verify.summary()
   import asyncio
   import cio
   async def main():
-      async with cio.connect("i2c://COM3?baud=2000000") as dev:
+      async with cio.connect("i2c:0 @ serial:COM3,baud=2000000") as dev:
           data = await dev.read_reg(0x57, 0xFFB0, 1)
   asyncio.run(main())
   ```

@@ -4,7 +4,7 @@ GPIO 引脚控制教学示例 (输出高低电平与输入读取)
 import asyncio
 import cio
 
-URL = "gpio://COM3?pin=1"
+URL = "gpio:1 @ serial:COM3"
 
 
 # 1. 异步原生模式 (推荐，纯协程驱动)
