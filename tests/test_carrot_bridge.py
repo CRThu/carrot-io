@@ -509,5 +509,53 @@ async def test_carrot_bridge_fast_fail_on_error():
     await bridge.close()
 
 
+@pytest.mark.asyncio
+async def test_i2c_bridge_semantic_trace_logging():
+    """Verify AsyncI2cBridge records structured I2C semantic logs with suppressed raw intermediate logs."""
+    pipe = MockTransport()
+    pipe.add_auto_reply(b"IIC.W(0x57, 0xFFB0, 2)\n", b"[RETURN]: 2\n")
+    pipe.add_auto_reply(b"IIC.R(0x57, 1)\n", b"[RETURN]: 0x10\n")
+    pipe.add_auto_reply(b"IIC.W(0x57, 0xFF, 1)\n", b"[RETURN]: 1\n")
+    pipe.add_auto_reply(b"IIC.SCAN()\n", b"[RETURN]: 0x57\n")
+
+    i2c = AsyncI2cBridge(pipe, reg_len=2)
+    await i2c.open()
+
+    # 1. read_reg should log exactly 1 structured composite entry (sub-operations write & read suppressed)
+    val = await i2c.read_reg(0x57, 0xFFB0, 1)
+    assert val == b"\x10"
+    hist = i2c.history()
+    assert len(hist) == 1
+    assert hist[0].tag == "I2C"
+    assert hist[0].meta["op"] == "RD"
+    assert hist[0].meta["reg"] == 0xFFB0
+    line1 = hist[0].format_line(color=False, show_ascii=False)
+    assert "[I2C]" in line1
+    assert "RD 0x57 @ 0xFFB0" in line1
+    assert "<- 10 (1B)" in line1
+
+    # 2. Raw write directly
+    await i2c.write(0x57, b"\xFF")
+    hist = i2c.history()
+    assert len(hist) == 2
+    assert hist[1].meta["op"] == "WR"
+    line2 = hist[1].format_line(color=False, show_ascii=False)
+    assert "WR 0x57" in line2
+    assert "-> FF (1B)" in line2
+
+    # 3. Scan
+    scanned = await i2c.scan()
+    assert scanned == [0x57]
+    hist = i2c.history()
+    assert len(hist) == 3
+    assert hist[2].meta["op"] == "SCAN"
+    line3 = hist[2].format_line(color=False)
+    assert "SCAN" in line3
+    assert "<- [0x57] (Found 1)" in line3
+
+    await i2c.close()
+
+
+
 
 

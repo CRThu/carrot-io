@@ -29,7 +29,7 @@ def test_io_logger_linear_preservation():
     assert hist2[1].data == b"RX2"
 
     dump = hist[3].hexdump()
-    assert "[IN ]" in dump
+    assert "<-" in dump
     assert "52 58 32" in dump
 
 
@@ -57,12 +57,12 @@ def test_io_logger_trace_and_listener():
     assert received_entries[0].meta == {"cmd": "test"}
     assert received_entries[0].hex == "01 02"
     assert received_entries[0].time_str != ""
-    assert "[CMD   ]" in captured.getvalue()
+    assert "[CMD]" in captured.getvalue()
 
     # Test dump
     dump_out = logger.dump(limit=5)
-    assert "[CMD   ]" in dump_out
-    assert "[RES   ]" in dump_out
+    assert "[CMD]" in dump_out
+    assert "[RES]" in dump_out
 
     # Test remove listener
     logger.remove_listener(on_entry)
@@ -75,8 +75,8 @@ def test_log_entry_format_customization():
 
     # 1. Default (both hex and ascii)
     line_default = entry.format_line(color=False, show_hex=True, show_ascii=True, show_time=True)
-    assert "[OUT]" in line_default
-    assert "[TX    ]" in line_default
+    assert "[TX]" in line_default
+    assert "->" in line_default
     assert "(5B)" in line_default
     assert "43 4D 44 01 02" in line_default
     assert "| CMD.." in line_default
@@ -93,12 +93,12 @@ def test_log_entry_format_customization():
 
     # 4. Hide time
     line_no_time = entry.format_line(color=False, show_time=False)
-    assert not line_no_time.startswith("[") or line_no_time.startswith("[OUT]")
+    assert line_no_time.startswith("[TX]")
 
     # 5. Hide length (e.g. (5B))
     line_no_len = entry.format_line(color=False, show_len=False)
     assert "(5B)" not in line_no_len
-    assert "[OUT] [TX    ]" in line_no_len
+    assert "[TX] ->" in line_no_len
 
     # 6. Max bytes truncation
     line_truncated = entry.format_line(color=False, max_bytes=2, show_hex=True, show_ascii=True)
@@ -136,25 +136,6 @@ def test_io_logger_configure_and_dump_overrides():
     assert dev.logger.max_bytes == 8
 
 
-def test_io_logger_log_delay_and_event():
-    logger = IoLogger(trace=False)
-    logger.log_event("DELAY", "50ms", meta={"seconds": 0.05, "ms": 50})
-    logger.log_event("CUSTOM", "State changed to READY", meta={"state": "READY"})
-
-    hist = logger.history(limit=10)
-    assert len(hist) == 2
-    assert hist[0].direction == "EVT"
-    assert hist[0].tag == "DELAY"
-    assert hist[0].meta["ms"] == 50
-
-    assert hist[1].direction == "EVT"
-    assert hist[1].tag == "CUSTOM"
-
-    dump_text = logger.dump(limit=2)
-    assert "[EVT] [DELAY ] 50ms" in dump_text
-    assert "[EVT] [CUSTOM] State changed to READY" in dump_text
-
-
 def test_io_logger_ascii_protocol_formatting():
     # Test CarrotBridge CMD & RETURN formatting (clean text without messy hex)
     cmd_entry = LogEntry(
@@ -164,7 +145,7 @@ def test_io_logger_ascii_protocol_formatting():
         tag="CMD",
     )
     cmd_line = cmd_entry.format_line(color=False)
-    assert "[OUT] [CMD   ] (11B) IIC.SCAN()" in cmd_line
+    assert "[CMD] -> IIC.SCAN() (11B)" in cmd_line
     assert "49 49 43" not in cmd_line  # Hex suppressed for clean ASCII command
 
     ret_entry = LogEntry(
@@ -174,7 +155,7 @@ def test_io_logger_ascii_protocol_formatting():
         tag="RETURN",
     )
     ret_line = ret_entry.format_line(color=False)
-    assert "[IN ] [RETURN] (26B) [RETURN]: 0x46,0x4A,0x57" in ret_line
+    assert "[RETURN] <- [RETURN]: 0x46,0x4A,0x57 (26B)" in ret_line
     assert "\r" not in ret_line
     assert "\n" not in ret_line
 
@@ -182,9 +163,9 @@ def test_io_logger_ascii_protocol_formatting():
 def test_io_logger_crlf_stripping_and_clean_single_line():
     entry = LogEntry(
         timestamp=1700000000.0,
-        direction="EVT",
+        direction="IN",
         data=b"Line with\r\nCRLF and\rtrailing\r\n",
-        tag="CLEAN",
+        tag="MSG",
     )
     line = entry.format_line(color=False)
     assert "\r" not in line
@@ -193,21 +174,18 @@ def test_io_logger_crlf_stripping_and_clean_single_line():
 
 
 def test_io_logger_color_and_msg_formatting():
-    # 1. Colored output for CMD, RETURN, MSG, EVT
+    # 1. Colored output for CMD, RETURN, MSG
     cmd_entry = LogEntry(timestamp=1700000000.0, direction="OUT", data=b"CMD_TEST\n", tag="CMD")
     ret_entry = LogEntry(timestamp=1700000000.0, direction="IN", data=b"[RETURN]: OK\n", tag="RETURN")
     msg_entry = LogEntry(timestamp=1700000000.0, direction="IN", data=b"Sensor ready\n", tag="MSG")
-    evt_entry = LogEntry(timestamp=1700000000.0, direction="EVT", data=b"State OK", tag="EVT")
 
     cmd_color = cmd_entry.format_line(color=True)
     ret_color = ret_entry.format_line(color=True)
     msg_color = msg_entry.format_line(color=True)
-    evt_color = evt_entry.format_line(color=True)
 
     assert "\033[96m" in cmd_color
     assert "\033[92m" in ret_color
     assert "\033[90m" in msg_color
-    assert "\033[33m[EVT]\033[0m" in evt_color
 
     # 2. Non-utf8 binary data with CMD tag falls back gracefully to hex
     binary_cmd = LogEntry(timestamp=1700000000.0, direction="OUT", data=b"\xFF\xFE\xFD", tag="CMD")
@@ -257,6 +235,116 @@ def test_transport_and_sync_clear_history():
 
     mock_t.clear_history()
     assert len(mock_t.history()) == 0
+
+
+def test_i2c_semantic_log_entry_formatting():
+    """Verify I2C semantic bus transaction formatting in LogEntry."""
+    # 1. Register Read: RD 0x57 @ 0xFFB0 <- 10 (1B)
+    e1 = LogEntry(
+        timestamp=1700000000.123,
+        direction="IN",
+        data=b"\x10",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "RD", "addr": 0x57, "reg": 0xFFB0, "reg_len": 2},
+    )
+    line1 = e1.format_line(color=False, show_ascii=False)
+    assert "[I2C]" in line1
+    assert "RD 0x57 @ 0xFFB0" in line1
+    assert "<- 10 (1B)" in line1
+
+    # Colored version
+    line1_color = e1.format_line(color=True, show_ascii=False)
+    assert "\033[36m[I2C]\033[0m" in line1_color
+    assert "\033[92mRD\033[0m" in line1_color
+    assert "\033[92m<-\033[0m" in line1_color
+
+    # 2. Register Write: WR 0x57 @ 0xFFB0 -> 55 AA (2B)
+    e2 = LogEntry(
+        timestamp=1700000000.124,
+        direction="OUT",
+        data=b"\x55\xAA",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "WR", "addr": 0x57, "reg": 0xFFB0, "reg_len": 2},
+    )
+    line2 = e2.format_line(color=False, show_ascii=False)
+    assert "WR 0x57 @ 0xFFB0" in line2
+    assert "-> 55 AA (2B)" in line2
+
+    # 3. Raw Read: RD 0x57 <- 01 02 03 04 (4B)
+    e3 = LogEntry(
+        timestamp=1700000000.125,
+        direction="IN",
+        data=b"\x01\x02\x03\x04",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "RD", "addr": 0x57},
+    )
+    line3 = e3.format_line(color=False, show_ascii=False)
+    assert "RD 0x57" in line3
+    assert "<- 01 02 03 04 (4B)" in line3
+
+    # 4. Raw Write: WR 0x57 -> FF (1B)
+    e4 = LogEntry(
+        timestamp=1700000000.126,
+        direction="OUT",
+        data=b"\xFF",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "WR", "addr": 0x57},
+    )
+    line4 = e4.format_line(color=False, show_ascii=False)
+    assert "WR 0x57" in line4
+    assert "-> FF (1B)" in line4
+
+    # 5. Bus Scan: SCAN <- [0x57, 0x68] (Found 2)
+    e5 = LogEntry(
+        timestamp=1700000000.127,
+        direction="IN",
+        data=b"",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "SCAN", "devices": [0x57, 0x68]},
+    )
+    line5 = e5.format_line(color=False)
+    assert "SCAN" in line5
+    assert "<- [0x57, 0x68] (Found 2)" in line5
+
+    # 6. Error: RD 0x57 @ 0xFFB0 <- [NACK]
+    e6 = LogEntry(
+        timestamp=1700000000.128,
+        direction="IN",
+        data=b"",
+        tag="I2C",
+        meta={"bus": "i2c", "op": "RD", "addr": 0x57, "reg": 0xFFB0, "reg_len": 2, "error": "NACK"},
+    )
+    line6 = e6.format_line(color=False)
+    assert "RD 0x57 @ 0xFFB0" in line6
+    assert "<- [NACK]" in line6
+
+
+def test_trace_formatter_registry_custom_pluggability():
+    """Verify pluggable formatter registry enables adding and removing domain formatters cleanly."""
+    from cio.trace.formatter import get_formatter, register_formatter, unregister_formatter
+
+    # 1. Initially CAN has no specialized formatter
+    assert get_formatter("CAN") is None
+    entry_can = LogEntry(timestamp=1700000000.0, direction="OUT", data=b"\x01\x02", tag="CAN")
+    raw_fmt = entry_can.format_line(color=False, show_ascii=False)
+    assert "[CAN] -> 01 02 (2B)" in raw_fmt
+
+    # 2. Register custom formatter
+    def my_can_formatter(entry, options):
+        return f"[CAN-FRAME] ID=0x123 DATA={entry.hex}"
+
+    register_formatter("CAN", my_can_formatter)
+    assert get_formatter("CAN") is my_can_formatter
+    custom_fmt = entry_can.format_line(color=False)
+    assert custom_fmt == "[CAN-FRAME] ID=0x123 DATA=01 02"
+
+    # 3. Unregister restores default
+    unregister_formatter("CAN")
+    assert get_formatter("CAN") is None
+    restored_fmt = entry_can.format_line(color=False, show_ascii=False)
+    assert "[CAN] -> 01 02 (2B)" in restored_fmt
+
+
 
 
 

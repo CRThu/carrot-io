@@ -23,6 +23,7 @@ from cio.converters import (
     to_hex_str,
 )
 from cio.exceptions import ConnectionError, IOOperationError, ReadTimeoutError
+from cio.trace.formatter import FormatOptions, format_raw_entry, paint, register_formatter
 
 
 class CarrotBridge(AsyncBaseTransport):
@@ -185,13 +186,13 @@ class AsyncI2cBridge(AsyncI2cBus):
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, reg_len=reg_len, trace=trace)
+        bridge_trace = kwargs.pop("bridge_trace", False) or kwargs.pop("raw_trace", False)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
             self._borrowed = True if borrowed is None else borrowed
         else:
             self._borrowed = False if borrowed is None else borrowed
-            self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
-        self.logger = self._bridge.logger
+            self._bridge = CarrotBridge(transport, timeout=timeout, trace=bridge_trace, borrowed=self._borrowed, **kwargs)
         self.bus = bus
 
     @property
@@ -218,15 +219,19 @@ class AsyncI2cBridge(AsyncI2cBus):
     async def read(self, addr: int, nbytes: int, timeout: float | None = None) -> bytes:
         if not self.is_open:
             await self.open()
-        res = await self._bridge.call("IIC.R", to_hex_str(addr), nbytes, timeout=timeout)
-        return parse_hex_bytes(res, nbytes=nbytes)
+        async with self.trace_tx("RD", addr=addr) as tx:
+            res = await self._bridge.call("IIC.R", to_hex_str(addr), nbytes, timeout=timeout)
+            data = parse_hex_bytes(res, nbytes=nbytes)
+            tx.data = data
+            return data
 
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         if not self.is_open:
             await self.open()
         raw_data = ensure_bytes(data)
-        res = await self._bridge.call("IIC.W", to_hex_str(addr), raw_data, len(raw_data), timeout=timeout)
-        return parse_int(res, default=len(raw_data))
+        async with self.trace_tx("WR", addr=addr, data=raw_data):
+            res = await self._bridge.call("IIC.W", to_hex_str(addr), raw_data, len(raw_data), timeout=timeout)
+            return parse_int(res, default=len(raw_data))
 
     async def scan(self, timeout: float | None = None) -> list[int]:
         """
@@ -234,8 +239,11 @@ class AsyncI2cBridge(AsyncI2cBus):
         """
         if not self.is_open:
             await self.open()
-        res = await self._bridge.call("IIC.SCAN", timeout=timeout)
-        return parse_int_list(res)
+        async with self.trace_tx("SCAN") as tx:
+            res = await self._bridge.call("IIC.SCAN", timeout=timeout)
+            devices = parse_int_list(res)
+            tx.meta["devices"] = devices
+            return devices
 
     async def config_speed(self, speed_hz: int) -> None:
         if not self.is_open:
@@ -469,3 +477,59 @@ class AsyncGpioBridge(AsyncGpioBus):
                     return True
             if timeout is not None and (asyncio.get_running_loop().time() - start_time) >= timeout:
                 return False
+
+
+# ==============================================================================
+# CarrotBridge ASCII Protocol Trace Formatter & Self-Registration
+# ==============================================================================
+
+_CARROT_TEXT_PALETTES: dict[str, tuple[str, str, str]] = {
+    "CMD": ("96", "93", "96"),       # Cyan tag/text, Yellow arrow
+    "RETURN": ("92", "92", "92"),    # Green tag/arrow/text
+    "RET": ("92", "92", "92"),
+    "MSG": ("90", "90", "90"),       # Gray tag/arrow/text
+}
+
+
+def format_carrot_text(entry: Any, opts: FormatOptions) -> str:
+    """Format CarrotBridge structured ASCII text frames (CMD, RETURN, MSG)."""
+    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.show_time else ""
+
+    is_printable_ascii = False
+    if opts.show_ascii:
+        try:
+            decoded = entry.data.decode("utf-8")
+            is_printable_ascii = bool(decoded) and all(
+                c in "\r\n\t " or (32 <= ord(c) <= 126) for c in decoded
+            )
+        except UnicodeDecodeError:
+            is_printable_ascii = False
+
+    if is_printable_ascii and opts.show_ascii and not (opts.show_hex and not opts.show_ascii):
+        clean_text = (
+            entry.data.decode("utf-8", errors="replace")
+            .strip()
+            .replace("\r\n", " ")
+            .replace("\r", " ")
+            .replace("\n", " ")
+        )
+        tag_name = entry.tag or ("CMD" if entry.direction in ("OUT", "TX") else "RET")
+        is_out = entry.direction in ("OUT", "TX") or tag_name == "CMD"
+        arrow = "->" if is_out else "<-"
+
+        default_palette = ("36", "93", "") if is_out else ("32", "92", "")
+        tag_c, arrow_c, text_c = _CARROT_TEXT_PALETTES.get(tag_name, default_palette)
+
+        tag_str = paint(f"[{tag_name}]", tag_c, opts.color)
+        arrow_str = paint(arrow, arrow_c, opts.color)
+        text_str = paint(clean_text, text_c, opts.color)
+
+        len_str = f" {paint(f'({len(entry.data)}B)', '90', opts.color)}" if opts.show_len and entry.data else ""
+        return f"{time_part}{tag_str} {arrow_str} {text_str}{len_str}".strip()
+
+    return format_raw_entry(entry, opts)
+
+
+for _tag_name in ("CMD", "RETURN", "RET", "MSG"):
+    register_formatter(_tag_name, format_carrot_text)
+

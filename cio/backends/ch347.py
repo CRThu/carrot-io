@@ -333,20 +333,21 @@ class Ch347I2cBus(AsyncI2cBus):
         loop = asyncio.get_running_loop()
 
         async with self.device._get_lock():
-            ok = await loop.run_in_executor(
-                None,
-                self.device.dll.CH347StreamI2C,
-                self.device.dev_index,
-                1,
-                write_addr,
-                nbytes,
-                read_buf,
-            )
-            if not ok:
-                raise IOOperationError(f"CH347 I2C read from address 0x{addr:02X} failed")
-            data = bytes(read_buf)
-            self.logger.log_in(data, tag="I2C-RX")
-            return data
+            async with self.trace_tx("RD", addr=addr) as tx:
+                ok = await loop.run_in_executor(
+                    None,
+                    self.device.dll.CH347StreamI2C,
+                    self.device.dev_index,
+                    1,
+                    write_addr,
+                    nbytes,
+                    read_buf,
+                )
+                if not ok:
+                    raise IOOperationError(f"CH347 I2C read from address 0x{addr:02X} failed")
+                data = bytes(read_buf)
+                tx.data = data
+                return data
 
     async def write(self, addr: int, data: BytesLike, timeout: float | None = None) -> int:
         await self._ensure_open()
@@ -358,19 +359,19 @@ class Ch347I2cBus(AsyncI2cBus):
         loop = asyncio.get_running_loop()
 
         async with self.device._get_lock():
-            self.logger.log_out(raw, tag="I2C-TX")
-            ok = await loop.run_in_executor(
-                None,
-                self.device.dll.CH347StreamI2C,
-                self.device.dev_index,
-                len(wbuf),
-                wbuf,
-                0,
-                None,
-            )
-            if not ok:
-                raise IOOperationError(f"CH347 I2C write to address 0x{addr:02X} failed")
-            return len(raw)
+            async with self.trace_tx("WR", addr=addr, data=raw):
+                ok = await loop.run_in_executor(
+                    None,
+                    self.device.dll.CH347StreamI2C,
+                    self.device.dev_index,
+                    len(wbuf),
+                    wbuf,
+                    0,
+                    None,
+                )
+                if not ok:
+                    raise IOOperationError(f"CH347 I2C write to address 0x{addr:02X} failed")
+                return len(raw)
 
     async def read_reg(
         self,
@@ -398,20 +399,21 @@ class Ch347I2cBus(AsyncI2cBus):
         loop = asyncio.get_running_loop()
 
         async with self.device._get_lock():
-            ok = await loop.run_in_executor(
-                None,
-                self.device.dll.CH347StreamI2C,
-                self.device.dev_index,
-                len(wbuf),
-                wbuf,
-                nbytes,
-                read_buf,
-            )
-            if not ok:
-                raise IOOperationError(f"CH347 atomic read_reg failed (addr=0x{addr:02X}, reg=0x{reg:04X})")
-            data = bytes(read_buf)
-            self.logger.log_in(data, tag="I2C-REG-RX")
-            return data
+            async with self.trace_tx("RD", addr=addr, reg=reg, reg_len=actual_reg_len) as tx:
+                ok = await loop.run_in_executor(
+                    None,
+                    self.device.dll.CH347StreamI2C,
+                    self.device.dev_index,
+                    len(wbuf),
+                    wbuf,
+                    nbytes,
+                    read_buf,
+                )
+                if not ok:
+                    raise IOOperationError(f"CH347 atomic read_reg failed (addr=0x{addr:02X}, reg=0x{reg:04X})")
+                data = bytes(read_buf)
+                tx.data = data
+                return data
 
     async def scan(self, timeout: float | None = None) -> list[int]:
         """
@@ -428,52 +430,54 @@ class Ch347I2cBus(AsyncI2cBus):
 
         has_raw_io = hasattr(dll, "CH347WriteData") and hasattr(dll, "CH347ReadData")
 
-        async with self.device._get_lock():
-            if has_raw_io:
-                # 沁恒底层原生单字节 I2C 探测协议包 (规范级无侵入单字节嗅探):
-                # 0xAA(STREAM) + 0x74(STA) + 0x80(0长度OUT:仅发送1字节地址并返回ACK状态) + Addr_W + 0x75(STO) + 0x00(END)
-                for addr in range(0x08, 0x78):
-                    raw_cmd = bytes([0xAA, 0x74, 0x80, (addr << 1) & 0xFE, 0x75, 0x00])
-                    wlen = ctypes.c_ulong(len(raw_cmd))
-                    ok_w = await loop.run_in_executor(None, dll.CH347WriteData, idx, raw_cmd, ctypes.byref(wlen))
-                    if not ok_w:
-                        continue
-                    rbuf = (ctypes.c_ubyte * 8)()
-                    rlen = ctypes.c_ulong(8)
-                    ok_r = await loop.run_in_executor(None, dll.CH347ReadData, idx, rbuf, ctypes.byref(rlen))
-                    if ok_r and rlen.value > 0 and (rbuf[0] & 0x01):
-                        active_addresses.append(addr)
-            elif hasattr(dll, "CH347StreamI2C_RetACK"):
-                for addr in range(0x08, 0x78):
-                    wbuf = bytes([(addr << 1) & 0xFE, 0x00])
-                    ack_cnt = ctypes.c_ulong(0)
-                    ok = await loop.run_in_executor(
-                        None,
-                        dll.CH347StreamI2C_RetACK,
-                        idx,
-                        len(wbuf),
-                        wbuf,
-                        0,
-                        None,
-                        ctypes.byref(ack_cnt),
-                    )
-                    if ok and ack_cnt.value >= 1:
-                        active_addresses.append(addr)
-            else:
-                for addr in range(0x08, 0x78):
-                    wbuf = bytes([(addr << 1) & 0xFE, 0x00])
-                    ok = await loop.run_in_executor(
-                        None,
-                        dll.CH347StreamI2C,
-                        idx,
-                        len(wbuf),
-                        wbuf,
-                        0,
-                        None,
-                    )
-                    if ok:
-                        active_addresses.append(addr)
-        return active_addresses
+        async with self.trace_tx("SCAN") as tx:
+            async with self.device._get_lock():
+                if has_raw_io:
+                    # 沁恒底层原生单字节 I2C 探测协议包 (规范级无侵入单字节嗅探):
+                    # 0xAA(STREAM) + 0x74(STA) + 0x80(0长度OUT:仅发送1字节地址并返回ACK状态) + Addr_W + 0x75(STO) + 0x00(END)
+                    for addr in range(0x08, 0x78):
+                        raw_cmd = bytes([0xAA, 0x74, 0x80, (addr << 1) & 0xFE, 0x75, 0x00])
+                        wlen = ctypes.c_ulong(len(raw_cmd))
+                        ok_w = await loop.run_in_executor(None, dll.CH347WriteData, idx, raw_cmd, ctypes.byref(wlen))
+                        if not ok_w:
+                            continue
+                        rbuf = (ctypes.c_ubyte * 8)()
+                        rlen = ctypes.c_ulong(8)
+                        ok_r = await loop.run_in_executor(None, dll.CH347ReadData, idx, rbuf, ctypes.byref(rlen))
+                        if ok_r and rlen.value > 0 and (rbuf[0] & 0x01):
+                            active_addresses.append(addr)
+                elif hasattr(dll, "CH347StreamI2C_RetACK"):
+                    for addr in range(0x08, 0x78):
+                        wbuf = bytes([(addr << 1) & 0xFE, 0x00])
+                        ack_cnt = ctypes.c_ulong(0)
+                        ok = await loop.run_in_executor(
+                            None,
+                            dll.CH347StreamI2C_RetACK,
+                            idx,
+                            len(wbuf),
+                            wbuf,
+                            0,
+                            None,
+                            ctypes.byref(ack_cnt),
+                        )
+                        if ok and ack_cnt.value >= 1:
+                            active_addresses.append(addr)
+                else:
+                    for addr in range(0x08, 0x78):
+                        wbuf = bytes([(addr << 1) & 0xFE, 0x00])
+                        ok = await loop.run_in_executor(
+                            None,
+                            dll.CH347StreamI2C,
+                            idx,
+                            len(wbuf),
+                            wbuf,
+                            0,
+                            None,
+                        )
+                        if ok:
+                            active_addresses.append(addr)
+            tx.meta["devices"] = active_addresses
+            return active_addresses
 
 # --- SPI 总线传输实现 ---
 

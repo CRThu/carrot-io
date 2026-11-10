@@ -278,9 +278,11 @@ dev.logger.max_bytes = 32       # 限制单条最大展示字节数（超长自�
 # 2. 批量设置
 dev.logger.configure(show_hex=False, show_len=False, max_bytes=16)
 
-# 3. 记录自定义诊断/控制事件
-dev.logger.log_event("DELAY", "50ms")               # 输出 [EVT] [DELAY ] 50ms
-dev.logger.log_event("STATE", "Power rail ON")      # 输出 [EVT] [STATE ] Power rail ON
+# 3. 格式化日志输出效果（统一物理流向 -> / <-，I2C 语义自动对齐）
+# [12:00:00.000] [I2C] RD 0x57 @ 0xFFB0      <- 10 (1B)
+# [12:00:00.005] [I2C] WR 0x57 @ 0xFFE6      -> 55 (1B)
+# [12:00:00.010] [I2C] SCAN                  <- [0x57] (Found 1)
+# [12:00:00.015] [TX] -> 48 45 4C 4C 4F (5B) | HELLO
 
 # 4. 临时覆盖 dump 格式
 print(dev.dump_history(limit=10, show_hex=False, show_len=False))

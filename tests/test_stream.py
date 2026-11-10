@@ -65,7 +65,8 @@ async def test_base_transport_helpers():
 
     entries = dev.history(10)
     assert len(entries) >= 2
-    assert "[OUT]" in dev.dump_history()
+    assert "->" in dev.dump_history()
+    assert "[TX]" in dev.dump_history()
 
     await dev.close()
 

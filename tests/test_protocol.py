@@ -38,7 +38,8 @@ async def test_protocol_transport_async():
 
     # dump_history
     dump_text = proto.dump_history(limit=5)
-    assert "OUT" in dump_text
+    assert "[TX]" in dump_text
+    assert "->" in dump_text
 
     # async context manager
     async with proto as p:
