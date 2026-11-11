@@ -41,14 +41,14 @@ def test_factory_connect_serial():
 
 
 def test_factory_spi_explicit_tcp():
-    dev = cio.connect("spi:0 @ tcp:192.168.1.100:5025")
+    dev = cio.connect("spi[cb]:0 @ tcp:192.168.1.100:5025")
     assert isinstance(dev, AsyncSpiBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
 
 
 def test_factory_spi_explicit_tcp_options():
-    dev = cio.connect("spi:0,timeout=2.5 @ tcp:192.168.1.100:5025")
+    dev = cio.connect("spi[cb]:0,timeout=2.5 @ tcp:192.168.1.100:5025")
     assert isinstance(dev, AsyncSpiBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
@@ -56,7 +56,7 @@ def test_factory_spi_explicit_tcp_options():
 
 
 def test_factory_i2c_explicit_tcp():
-    dev = cio.connect("i2c:0,reg_len=2 @ tcp:192.168.1.100:5025,timeout=1.5")
+    dev = cio.connect("i2c[cb]:0,reg_len=2 @ tcp:192.168.1.100:5025,timeout=1.5")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.host == "192.168.1.100"
     assert dev.transport.port == 5025
@@ -65,13 +65,13 @@ def test_factory_i2c_explicit_tcp():
 
 
 def test_factory_i2c_default_serial():
-    dev = cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=115200")
+    dev = cio.connect("i2c[cb]:0,reg_len=2 @ serial:COM3,baud=115200")
     assert isinstance(dev, AsyncI2cBridge)
     assert dev.transport.port == "COM3"
     assert dev.transport.baudrate == 115200
     assert dev.default_reg_len == 2
 
-    dev2 = cio.connect("gpio:3 @ serial:custom_device_name")
+    dev2 = cio.connect("gpio[cb]:3 @ serial:custom_device_name")
     assert dev2.transport.port == "custom_device_name"
 
 
@@ -129,7 +129,7 @@ def test_factory_invalid_locators():
 
 
 def test_factory_gpio_with_explicit_transport():
-    dev = cio.connect("gpio:5 @ mock:dev")
+    dev = cio.connect("gpio[cb]:5 @ mock:dev")
     assert isinstance(dev, AsyncGpioBridge)
     assert dev.pin == 5
 
@@ -157,7 +157,7 @@ def test_top_level_factory_helpers():
 
 def test_gpio_bridge_factory_attributes():
     """Verify that bridged locator returns an object with trace and lifecycle methods."""
-    pin = cio.connect("gpio:0,show.hex=true,trace=on @ serial:COM3")
+    pin = cio.connect("gpio[cb]:0,show.hex=true,trace=on @ serial:COM3")
     assert hasattr(pin, "trace")
     assert pin.trace.show.hex is True
     assert pin.trace == True
@@ -182,7 +182,7 @@ def test_factory_matmul_operator_overloading():
     """Verify python @ operator overloading on BusDescriptor."""
     # 1. BusDescriptor @ AsyncBaseTransport
     ser = cio.serial(port="COM3", baud=115200)
-    bus = cio.i2c(0, reg_len=2) @ ser
+    bus = cio.i2c["cb"](0, reg_len=2) @ ser
     assert isinstance(bus, AsyncI2cBridge)
     assert bus.transport.port == "COM3"
     assert bus.default_reg_len == 2
@@ -193,14 +193,14 @@ def test_factory_matmul_operator_overloading():
     assert bus_cb.default_reg_len == 2
 
     # 2. BusDescriptor @ str
-    bus2 = cio.i2c(0, reg_len=2) @ "serial:COM4,baud=2000000"
+    bus2 = cio.i2c["cb"](0, reg_len=2) @ "serial:COM4,baud=2000000"
     assert isinstance(bus2, AsyncI2cBridge)
     assert bus2.transport.port == "COM4"
     assert bus2.transport.baudrate == 2000000
 
     # 3. GpioDescriptor @ MockTransport
     mock_trans = MockTransport(address="dev")
-    pin = cio.gpio(pin=7) @ mock_trans
+    pin = cio.gpio["cb"](pin=7) @ mock_trans
     assert isinstance(pin, AsyncGpioBridge)
     assert pin.pin == 7
 
@@ -215,11 +215,11 @@ def test_factory_omitted_colon_and_single_device():
     assert d_ch.dev_index == 0
 
     # 2. Dual tier omitting colon on bus or both sides
-    b1 = cio.connect("i2c @ mock:dev")
+    b1 = cio.connect("i2c[cb] @ mock:dev")
     assert isinstance(b1, AsyncI2cBridge)
     assert b1.bus == 0
 
-    b2 = cio.connect("i2c,reg_len=2 @ serial:COM3,baud=115200")
+    b2 = cio.connect("i2c[cb],reg_len=2 @ serial:COM3,baud=115200")
     assert isinstance(b2, AsyncI2cBridge)
     assert b2.default_reg_len == 2
 

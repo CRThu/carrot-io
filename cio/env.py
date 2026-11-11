@@ -66,6 +66,13 @@ def load_local_dotenv(dotenv_path: str | None = None, override: bool = False) ->
     return loaded
 
 
+def ensure_dotenv_loaded(dotenv_path: str | None = None) -> None:
+    """确保本级目录的 .env 文件已加载。"""
+    global _DOTENV_LOADED
+    if not _DOTENV_LOADED:
+        load_local_dotenv(dotenv_path)
+
+
 def resolve_device_locator(name: str = "default") -> str:
     """
     根据设备名称解析对应的环境变量定位器 (Layered Locator)。

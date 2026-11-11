@@ -60,6 +60,7 @@ from cio.env import (
     close_all_devices,
     close_device,
     dev,
+    ensure_dotenv_loaded,
     reset_devices,
     resolve_device_locator,
     resolve_device_url,
@@ -96,18 +97,26 @@ def scan(kind: str | None = None) -> list[dict]:
 def register_bridge(
     bus: str,
     name: str | list[str] | tuple[str, ...],
-    bridge_cls: type,
+    bridge_cls: type | None = None,
     is_default: bool = False,
-) -> None:
+) -> Any:
     """
     Register a protocol bridge implementation for a target bus (e.g. 'i2c', 'spi', 'gpio').
+    Supports both direct functional call and decorator usage.
 
     :param bus: Target bus name, e.g. 'i2c', 'spi', 'gpio'.
     :param name: Bridge identifier or list of aliases, e.g. 'cb' or ['cb', 'carrot'].
-    :param bridge_cls: Bridge class taking (base_transport, **kwargs).
+    :param bridge_cls: Bridge class taking (base_transport, **kwargs). If None, returns a class decorator.
     :param is_default: Whether this bridge should be default fallback when bridge name is omitted.
     """
+    if bridge_cls is None:
+        def decorator(cls: type) -> type:
+            registry.register_bridge(bus=bus, name=name, bridge_cls=cls, is_default=is_default)
+            return cls
+        return decorator
+
     registry.register_bridge(bus=bus, name=name, bridge_cls=bridge_cls, is_default=is_default)
+    return bridge_cls
 
 
 def tcp(

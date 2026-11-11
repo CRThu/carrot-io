@@ -75,11 +75,15 @@ uv run bump-my-version bump patch           # 小版本升级
 9. **显式能力自省与开箱即用（Capabilities Introspection & Auto-Ready Resilience）**：
    - **显式能力契约**：淘汰 `hasattr` 盲猜与伪实现。所有传输实体必须声明不可变集合 `capabilities: frozenset[str]`（如 `frozenset({"stream", "uart"})`）。调用不支持的能力触发强类型的 `UnsupportedCapabilityError`（双重继承自 `TransportError` 和 `AttributeError`，兼顾强指引与鸭子类型容错）。
    - **开箱即用与自然就绪**：衍生子通道遵从最自然的开箱即用习惯（`if not self.is_open: await self.open()` 自动就绪），摒弃跨层私有状态追踪与人工拦截补丁，返璞归真，安全轻量。
-10. **分层硬件定位器体系（Layered Hardware Locators）**：
+10. **分层硬件定位器体系与协议桥插件化（Layered Hardware Locators & Pluggable Bridges）**：
     - 统一遵循分层硬件定位器规范：`[bus[bridge]:[channel][,k=v...] @] transport:[target][,k=v...]`。
     - **物理与应用层严格分界**：单 `@` 隔离逻辑总线（左侧）与物理信道（右侧），拒绝不平级的多重 `@`；
-    - **默认协议桥与极简表示**：`i2c:0,reg_len=2 @ serial:COM3,baud=2000000`（默认桥为 `cb` / CarrotBridge）；方括号 `i2c[cb]:0` 显式标明协议桥；
-    - **Python 运算符重载**：支持 `cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000)`，同构对应字符串定位器；
+    - **协议桥彻底解耦与类直传**：彻底消除对 `"cb"` 的硬编码假设。支持直接传入类对象作为第一等公民（如 `cio.i2c[NcI2cBridge](0, reg_len=2) @ cio.serial(...)` 或 `connect(..., bridge=NcI2cBridge)`）；
+    - **显式协议桥契约与零隐式兜底**：物理流信道（Serial/TCP）不原生具备总线能力，必须显式指明协议桥（`i2c[cb]:0` 或 `i2c[nc]:0`）或在环境里配置 `CIO_DEFAULT_BRIDGE_{BUS}`；严禁无脑隐式回退到 `cb`；CH347 等原生总线硬件免桥直通；
+    - **零代码侵入外挂注册（Pluggable Bridges via ENV & Inline）**：
+      - 支持类装饰器 `@cio.register_bridge(bus, name)`；
+      - 支持在 `.env` 中声明 `CIO_BRIDGE_{NAME}="module:Class"`，由框架按需惰性导入并注册；
+      - 支持定位器内联模块导入：`i2c[module:Class]:0 @ serial:...`；解析引擎严格遵循 Bracket-Aware 括号感知状态机，杜绝方括号内部冒号与总线分隔符冲突；
     - **彻底告别 Web URI**：废弃 `://` 格式，`connect()` 遇到旧格式显式抛出包含迁移指引的 `InvalidLocatorError`。
 11. **多通道时序数据收集与 1D 向量模型（Multi-Channel Time-Series & 1D Vector Model）**：
     - **1D 向量本质**：每个 Tag 是一条随时间独立生长的 1D 时序向量，天然允许不同采样率与非等长数据，严禁引入 2D 矩阵与强行对齐等高开销约束。

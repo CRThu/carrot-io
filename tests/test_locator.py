@@ -96,7 +96,8 @@ def test_parse_gpio_pin_channel():
     desc = parse_locator("gpio:1 @ serial:com3")
     assert desc.bus.name == "gpio"
     assert desc.bus.channel == 1
-    assert desc.bus.kwargs["pin"] == 1
+    assert desc.bus.to_bus_kwargs()["pin"] == 1
+    assert desc.bus.to_string() == "gpio:1"
     assert desc.transport.name == "serial"
     assert desc.transport.target == "com3"
 
@@ -104,6 +105,8 @@ def test_parse_gpio_pin_channel():
     desc_explicit = parse_locator("gpio:0,pin=5 @ serial:com3")
     assert desc_explicit.bus.channel == 0
     assert desc_explicit.bus.kwargs["pin"] == 5
+    assert desc_explicit.bus.to_bus_kwargs()["pin"] == 5
+    assert desc_explicit.bus.to_string() == "gpio:0,pin=5"
 
 
 def test_parse_single_tier_transports():
@@ -252,11 +255,12 @@ def test_descriptor_to_string_and_matmul_edge_cases():
     import cio
     from cio.locator import BusDescriptor, TransportDescriptor
 
-    bus_desc = cio.spi(1, cs=2)
+    bus_desc = cio.spi["cb"](1, cs=2)
     assert bus_desc.name == "spi"
+    assert bus_desc.bridge == "cb"
     assert bus_desc.channel == 1
     assert bus_desc.kwargs == {"cs": 2}
-    assert bus_desc.to_string() == "spi:1,cs=2"
+    assert bus_desc.to_string() == "spi[cb]:1,cs=2"
 
     trans_desc = TransportDescriptor("serial", "COM5", {"baud": 9600})
     assert trans_desc.to_string() == "serial:COM5,baud=9600"
@@ -268,3 +272,40 @@ def test_descriptor_to_string_and_matmul_edge_cases():
     # Invalid @ operand raises TypeError
     with pytest.raises(TypeError):
         _ = bus_desc @ 12345
+
+
+def test_bus_descriptor_to_bus_kwargs_ssot():
+    import cio
+    from cio.composite.carrotbridge import AsyncGpioBridge, AsyncI2cBridge, AsyncSpiBridge
+    from cio.backends.serial import SerialTransport
+
+    # 1. SSOT channel mapping
+    assert cio.gpio(3).to_bus_kwargs() == {"pin": 3}
+    assert cio.i2c(1, reg_len=2).to_bus_kwargs() == {"bus": 1, "reg_len": 2}
+    assert cio.spi(2, cs=1).to_bus_kwargs() == {"bus": 2, "cs": 1}
+
+    # 2. Explicit kwargs preservation
+    assert cio.gpio(0, pin=5).to_bus_kwargs() == {"pin": 5}
+    assert cio.i2c(0, bus=2).to_bus_kwargs() == {"bus": 2}
+    assert cio.gpio("PA1").to_bus_kwargs() == {"pin": "PA1"}
+
+    # 3. Clean string serialization without duplicate pin
+    assert cio.gpio(3).to_string() == "gpio:3"
+    assert cio.gpio("PA1").to_string() == "gpio:PA1"
+    desc_gpio = parse_locator("gpio:3 @ serial:COM1")
+    assert desc_gpio.bus.to_string() == "gpio:3"
+    assert desc_gpio.bus.to_bus_kwargs() == {"pin": 3}
+
+    desc_gpio_str = parse_locator("gpio:PA1 @ serial:COM1")
+    assert desc_gpio_str.bus.channel == "PA1"
+    assert desc_gpio_str.bus.to_string() == "gpio:PA1"
+    assert desc_gpio_str.bus.to_bus_kwargs() == {"pin": "PA1"}
+
+    # 4. Standard bridges accept channel alias directly
+    mock_trans = SerialTransport("mock")
+    gpio_b = AsyncGpioBridge(mock_trans, channel=4)
+    assert gpio_b.pin == 4
+    i2c_b = AsyncI2cBridge(mock_trans, channel=2)
+    assert i2c_b.bus == 2
+    spi_b = AsyncSpiBridge(mock_trans, channel=3)
+    assert spi_b.bus == 3

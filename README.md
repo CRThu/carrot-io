@@ -77,8 +77,8 @@ with cio.connect("serial:COM3,baud=115200") as dev:
     dev.write(b"PING\n")
     print(dev.read_until(b"\n"))
 
-# 3. 声明式硬件装配：使用 Python 原生 @ 操作符直连总线与物理底座
-with cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000) as i2c:
+# 3. 声明式硬件装配：使用 Python 原生 @ 操作符直连总线与物理底座 (指定桥为 cb)
+with cio.i2c["cb"](0, reg_len=2) @ cio.serial("COM3", baud=2000000) as i2c:
     print("Online I2C Slaves:", [hex(s) for s in i2c.scan()])
 
 # 4. 异步模式：使用 async with 保持原生高性能协程调度
@@ -147,8 +147,8 @@ with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
 ```python
 import cio
 
-# 方式 A：分层定位符字符串
-with cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=2000000") as i2c:
+# 方式 A：分层定位符字符串 (显式指定协议桥 [cb])
+with cio.connect("i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000") as i2c:
     # 扫描在线从机地址
     slaves = i2c.scan()
     print("Online I2C Slaves:", [hex(s) for s in slaves])
@@ -158,11 +158,15 @@ with cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=2000000") as i2c:
     val = i2c.read_reg(addr=0x57, reg=0x0100, nbytes=2)
     print("Reg 0x0100:", val.hex())
 
-# 方式 B：Python 强类型操作符重载 (@)（享受 100% IDE 智能感知）
-with cio.spi(cs=0) @ cio.serial("COM3", baud=2000000) as spi:
+# 方式 B：Python 强类型操作符重载 (@)（显式挂载桥）
+with cio.spi["cb"](cs=0) @ cio.serial("COM3", baud=2000000) as spi:
     # 发送 0x9F 命令，同时读回 3 字节厂商与设备 ID
     rx = spi.transfer([0x9F, 0x00, 0x00, 0x00])
     print(f"SPI Flash ID: 0x{rx[1]:02X}{rx[2]:02X}{rx[3]:02X}")
+
+# 方式 C：自定义协议桥类第一等公民直传（如 NC 二进制流控桥）
+# with cio.i2c[NcI2cBridge](0, reg_len=2) @ cio.serial("COM5", baud=2000000) as i2c:
+#     i2c.write_reg(0x57, 0xFFB0, 0x10)
 ```
 
 ### 4. GPIO 引脚电平控制
@@ -170,7 +174,7 @@ with cio.spi(cs=0) @ cio.serial("COM3", baud=2000000) as spi:
 ```python
 import cio
 
-with cio.connect("gpio:1 @ serial:COM3") as gpio:
+with cio.connect("gpio[cb]:1 @ serial:COM3") as gpio:
     gpio.set_high()
     print("Current Level:", gpio.read_level())
     gpio.toggle()
@@ -210,21 +214,23 @@ with cio.connect("serial:COM3,baud=115200,trace=on") as dev:
     print(dev.dump_history(limit=10))
 ```
 
-### 2. 环境变量单例注入 (`from cio import dev`)
+### 2. 环境变量单例注入与外挂协议挂载 (`from cio import dev`)
 
-通过 `.env` 或环境变量 `CIO_DEVICE` 声明设备，脚本内直接调用，彻底消除测试脚本中的硬编码端口：
+通过 `.env` 或环境变量 `CIO_DEVICE` 声明设备，脚本内直接调用，彻底消除测试脚本中的硬编码端口。亦支持在 `.env` 中声明外挂协议类（如 `CIO_BRIDGE_NC`），实现**测试脚本零修改**无缝切换底层固件：
 
 ```bash
-# 在当前目录 .env 文件中声明
-CIO_DEVICE="visa:USB0::0x2A8D::0x9007::MY63160152::INSTR"
+# 在当前目录 .env 文件中声明 (支持 VISA、串口、I2C/SPI 或外挂 NC 桥)
+CIO_DEVICE="i2c[nc]:0,reg_len=2 @ serial:COM5,baud=2000000"
+CIO_BRIDGE_NC="controller_bridge:NcI2cBridge"   # 告诉框架自动按需导入该协议桥
 ```
 
 ```python
 from cio import dev
 
-# 无需手动 connect，开箱即用，进程退出时由 atexit 自动安全释放句柄
-idn = dev.query("*IDN?")
-print("Auto-injected device:", idn)
+# 无需手动 connect，无需手动 import 桥模块，开箱即用，进程退出由 atexit 自动安全释放句柄
+with dev:
+    data = dev.read_reg(0x57, 0xFFB0)
+    print("STATUS Reg:", data.hex())
 ```
 
 ### 3. 芯片与硬件 DSL 验证断言 (`check` / `verify`)
@@ -235,7 +241,7 @@ print("Auto-injected device:", idn)
 import cio
 from cio import check, require, verify
 
-with cio.connect("i2c @ serial:COM3") as i2c:
+with cio.connect("i2c[cb] @ serial:COM3") as i2c:
     verify.reset()
 
     # 1. check 记录断言结果并不中断执行；支持掩码比对
@@ -354,8 +360,8 @@ with cio.Collector("run.csv") as col:
 ### 7. 顶层入口与快捷构造 (`cio.*`)
 | 函数 / 对象 | 概述与说明 | 极简调用示例 |
 |---|---|---|
-| `cio.connect(locator)` | 万能分层定位符工厂，自动解析分层定位符并挂载对应物理驱动或协议桥 | `cio.connect("i2c:0,reg_len=2 @ serial:COM3,baud=2000000")` |
-| `cio.i2c()`, `cio.spi()`, `cio.gpio()` | 强类型总线工厂，支持 Python 原生 `@` 操作符进行硬件声明式装配 | `cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000)` |
+| `cio.connect(locator)` | 万能分层定位符工厂，自动解析分层定位符并挂载对应物理驱动或协议桥 | `cio.connect("i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000")` |
+| `cio.i2c()`, `cio.spi()`, `cio.gpio()` | 强类型总线工厂，支持 Python 原生 `@` 操作符进行硬件声明式装配 | `cio.i2c["cb"](0, reg_len=2) @ cio.serial("COM3", baud=2000000)` |
 | `cio.scan(kind=None)` | 静默探测并返回系统在线设备列表（可指定 `"visa"`, `"serial"` 等） | `cio.scan("visa")` / `cio.scan()` |
 | `cio.serial()`, `cio.tcp()`, `cio.visa()`, `cio.ch347()` | 显式快捷工厂函数，快速建立特定物理信道 | `cio.visa("USB0::...")` / `cio.serial("COM3")` |
 | `from cio import dev` | 声明式环境变量单例代理，按工作区 `.env` 自动按需连接 | `dev.write(...)` |

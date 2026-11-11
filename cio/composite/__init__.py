@@ -12,10 +12,10 @@ from cio.composite.carrotbridge import (
 from cio.composite.rpc import RpcRemoteTransport, RpcServer, start_rpc_server
 from cio.registry import registry
 
-# Register default CarrotBridge ("cb") for standard buses
-registry.register_bridge("i2c", "cb", AsyncI2cBridge, is_default=True)
-registry.register_bridge("spi", "cb", AsyncSpiBridge, is_default=True)
-registry.register_bridge("gpio", "cb", AsyncGpioBridge, is_default=True)
+# Register standard CarrotBridge ("cb") protocol bridge without enforcing it as implicit default
+registry.register_bridge("i2c", "cb", AsyncI2cBridge, is_default=False)
+registry.register_bridge("spi", "cb", AsyncSpiBridge, is_default=False)
+registry.register_bridge("gpio", "cb", AsyncGpioBridge, is_default=False)
 
 __all__ = [
     "CarrotBridge",

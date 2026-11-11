@@ -117,18 +117,10 @@ def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
         # 双层协议桥总线 (Dual Tier: 逻辑端与物理端各归各的表达式选项)
         assert desc.bus is not None
         base_kwargs = dict(desc.transport.kwargs)
-        bus_kwargs = {**desc.bus.kwargs, **kwargs}
+        bus_kwargs = {**desc.bus.to_bus_kwargs(), **kwargs}
 
         if "timeout" in bus_kwargs and "timeout" not in base_kwargs:
             base_kwargs["timeout"] = bus_kwargs["timeout"]
-
-        # 映射 channel
-        if desc.bus.name == "gpio":
-            if "pin" not in bus_kwargs:
-                bus_kwargs["pin"] = desc.bus.channel
-        else:
-            if "bus" not in bus_kwargs and "channel" not in bus_kwargs:
-                bus_kwargs["bus"] = desc.bus.channel
 
         base_name = desc.transport.name
         base_target = desc.transport.target
@@ -149,7 +141,14 @@ def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
         bus_name = desc.bus.name
         bridge_name = desc.bus.bridge
 
-        if bridge_name is None and bus_name in getattr(base_transport, "capabilities", frozenset()):
+        explicit_bridge = kwargs.pop("bridge", None) or kwargs.pop("bridge_cls", None)
+        if explicit_bridge is not None:
+            if isinstance(explicit_bridge, type):
+                bridge_cls = explicit_bridge
+            else:
+                bridge_cls = registry.get_bridge_cls(bus_name, str(explicit_bridge))
+            transport = bridge_cls(base_transport, **bus_kwargs)
+        elif bridge_name is None and bus_name in getattr(base_transport, "capabilities", frozenset()):
             factory_method = getattr(base_transport, bus_name, None)
             if callable(factory_method):
                 transport = factory_method(**bus_kwargs)
@@ -157,7 +156,21 @@ def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
                 bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
                 transport = bridge_cls(base_transport, **bus_kwargs)
         else:
-            bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
+            if bridge_name is None and bus_name not in getattr(base_transport, "capabilities", frozenset()):
+                try:
+                    bridge_cls = registry.get_bridge_cls(bus_name, None)
+                except InvalidLocatorError:
+                    available = list(registry._bridges.get(bus_name, {}).keys())
+                    raise InvalidLocatorError(
+                        f"Transport '{base_name}' does not natively support bus '{bus_name}'. "
+                        f"Please specify a protocol bridge explicitly in brackets, "
+                        f"e.g. '{bus_name}[cb]:{desc.bus.channel} @ {desc.transport.to_string()}' or "
+                        f"'{bus_name}[nc]:{desc.bus.channel} @ {desc.transport.to_string()}'. "
+                        f"Available bridges: {available}. "
+                        f"(Or configure CIO_DEFAULT_BRIDGE_{bus_name.upper()} in your environment/.env)."
+                    )
+            else:
+                bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
             transport = bridge_cls(base_transport, **bus_kwargs)
 
     # 统一挂载跟踪与展示配置 (基于 AsyncBaseTransport / AsyncBaseBus 核心契约)

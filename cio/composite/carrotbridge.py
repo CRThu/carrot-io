@@ -183,9 +183,12 @@ class AsyncI2cBridge(AsyncI2cBus):
         timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         borrowed: bool | None = None,
+        channel: int | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, reg_len=reg_len, trace=trace)
+        if channel is not None and bus == 0:
+            bus = channel
         bridge_trace = kwargs.pop("bridge_trace", False) or kwargs.pop("raw_trace", False)
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
@@ -265,9 +268,12 @@ class AsyncSpiBridge(AsyncSpiBus):
         timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         borrowed: bool | None = None,
+        channel: int | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, trace=trace)
+        if channel is not None and bus == 0:
+            bus = channel
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
             self._borrowed = True if borrowed is None else borrowed
@@ -367,12 +373,16 @@ class AsyncGpioBridge(AsyncGpioBus):
         self,
         transport: AsyncBaseTransport | CarrotBridge,
         pin: int | str = 0,
+        mode: str = "out",
         timeout: float | None = DEFAULT_TIMEOUT,
         trace: bool = False,
         borrowed: bool | None = None,
+        channel: int | str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(timeout=timeout, trace=trace)
+        if channel is not None and pin == 0:
+            pin = channel
         if isinstance(transport, CarrotBridge):
             self._bridge = transport
             self._borrowed = True if borrowed is None else borrowed
@@ -381,6 +391,7 @@ class AsyncGpioBridge(AsyncGpioBus):
             self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
         self.trace = self._bridge.trace
         self.pin = pin
+        self.mode = mode
 
     @property
     def bridge(self) -> CarrotBridge:
@@ -394,22 +405,16 @@ class AsyncGpioBridge(AsyncGpioBus):
     def is_open(self) -> bool:
         return self._bridge.is_open
 
-    @property
-    def trace(self) -> bool:
-        return self._bridge.trace
-
-    @trace.setter
-    def trace(self, value: bool) -> None:
-        self._bridge.trace = bool(value)
-
     async def _ensure_open(self) -> None:
         if not self.is_open:
             await self.open()
 
     async def open(self) -> None:
         await self._bridge.open()
+        self._is_open = True
 
     async def close(self) -> None:
+        self._is_open = False
         if not self._borrowed:
             await self._bridge.close()
 

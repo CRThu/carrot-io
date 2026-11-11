@@ -48,45 +48,76 @@
 | **原生 UDP** | `udp:192.168.1.100:5025` | 异步 UDP 流式 Socket（已归一为流，支持 `read_until`），参数：`timeout=2.0`, `buffer_size=16MB` |
 | **FTDI 控制器** | `ftdi:ftdi:232h/1,baud=115200` | PyFTDI 适配器 |
 | **CH347 底座** | `ch347:0` | 沁恒 CH347 高速多协议底座，参数：`index=0` |
-| **I2C 协议桥 (串口)** | `i2c:0,reg_len=2 @ serial:COM3,baud=2000000` | 串口底座挂接默认 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `speed=` |
-| **CH347 原生 I2C** | `i2c:0,frequency=400000 @ ch347:0` | 显式指定 CH347 硬件原生 I2C 主机，参数：`frequency=`, `reg_len=1/2/4` |
-| **SPI 全双工 (串口)** | `spi:0,cs=0 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge SPI 主机，参数：`cs=0`, `bus=0` |
-| **SPI (网络桥)** | `spi:0,clock=10MHz @ tcp:192.168.1.100:5025` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
-| **CH347 原生 SPI** | `spi:0,frequency=15000000,mode=0,cs=0 @ ch347:0` | 显式指定 CH347 硬件原生 SPI 主机，参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
-| **GPIO 引脚控制** | `gpio:1 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge GPIO 引脚控制 |
-| **CH347 原生 GPIO**| `gpio:3 @ ch347:0` | 显式指定 CH347 硬件原生 GPIO 引脚控制，参数：`pin=0~7` |
+| **I2C 协议桥 (串口)** | `i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge I2C 主机，参数：`reg_len=1/2/4`, `speed=` |
+| **CH347 原生 I2C** | `i2c:0,frequency=400000 @ ch347:0` | 显式指定 CH347 硬件原生 I2C 主机（原生硬件无需桥），参数：`frequency=`, `reg_len=1/2/4` |
+| **SPI 全双工 (串口)** | `spi[cb]:0,cs=0 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge SPI 主机，参数：`cs=0`, `bus=0` |
+| **SPI (网络桥)** | `spi[cb]:0,clock=10MHz @ tcp:192.168.1.100:5025` | 显式指定 TCP 底座并挂接 SPI 协议桥 |
+| **CH347 原生 SPI** | `spi:0,frequency=15000000,mode=0,cs=0 @ ch347:0` | 显式指定 CH347 硬件原生 SPI 主机（原生硬件无需桥），参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
+| **GPIO 引脚控制** | `gpio[cb]:1 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge GPIO 引脚控制 |
+| **CH347 原生 GPIO**| `gpio:3 @ ch347:0` | 显式指定 CH347 硬件原生 GPIO 引脚控制（原生硬件无需桥），参数：`pin=0~7` |
 | **VISA 仪器设备** | `visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=5.0` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `read_termination=`, `backend=@ni` |
-| **显式特化协议桥** | `i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000` | 方括号显式指定协议桥（默认内置 `cb` 与 `None`） |
+| **外挂协议桥** | `i2c[nc]:0,reg_len=2 @ serial:COM5,baud=2000000` | 方括号显式指定协议桥（支持 `cb`、外挂别名 `nc` 或内联 `module:Class`） |
 | **RPC 硬件代理** | `rpc:192.168.1.50:8000/COM1,baud=115200` | 跨网络机器远程硬件透明代理 |
 
 > **分层硬件定位器设计哲学：**
-> - **单 `@` 物理隔离边界**：以 `@` 分界，左侧为高层应用协议/总线逻辑（`i2c:0,reg_len=2`），右侧为物理传输链路（`serial:COM3,baud=2000000`）；
-> - **Python 运算符重载**：支持 `bus = cio.i2c(0, reg_len=2) @ cio.serial("COM3", baud=2000000)`；
+> - **单 `@` 物理隔离边界**：以 `@` 分界，左侧为高层应用协议/总线逻辑（`i2c[cb]:0,reg_len=2`），右侧为物理传输链路（`serial:COM3,baud=2000000`）；
+> - **显式协议桥契约**：对于原生具备总线能力的硬件（如 `ch347:0`），直接直通；对于生肉字节流信道（`serial` / `tcp`），必须显式指明协议桥（如 `i2c[cb]:0` 或 `i2c[nc]:0`），或通过 `.env` 中的 `CIO_DEFAULT_BRIDGE_I2C` 声明默认桥，彻底告别隐式协议假设；
+> - **Python 运算符重载与类直传**：支持 `bus = cio.i2c["cb"](0) @ cio.serial(...)`，亦支持直传协议桥类 `bus = cio.i2c[MyBridgeClass](0) @ cio.serial(...)`；
 > - **通用参数：**
 >   - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
 >   - `timeout=2.0`：统一设置默认 I/O 超时（秒），默认全库生效防挂死，支持显式传参或 `timeout=None` 覆盖。
 >   - `buffer_size=16777216`：流传输（Serial / TCP / UDP / VISA / FTDI）默认统一配备 16MB 动态安全缓冲区，零内存空耗。
 
-### 2. 协议桥注册与扩展 (`cio.register_bridge`)
+### 2. 协议桥注册、类对象直传与环境变量外挂 (`cio.register_bridge`)
 
-支持三方或自研协议（如 Modbus, 自定义帧等）以插拔方式注册为通用总线桥：
+`cio` 彻底解耦了总线抽象与协议桥，支持以下三种灵活外挂协议桥的形态：
 
+#### 方式一：类装饰器 / 函数式注册
 ```python
 import cio
-from cio import AsyncBaseTransport
+from cio import AsyncI2cBus, AsyncBaseTransport
 
-class MyI2cBridge(AsyncBaseTransport):
-    def __init__(self, transport: AsyncBaseTransport, **kwargs):
-        super().__init__()
+# 装饰器注册：直接挂载到总线命名空间
+@cio.register_bridge("i2c", ["nc", "nc_bridge"])
+class NcI2cBridge(AsyncI2cBus):
+    def __init__(self, transport: AsyncBaseTransport, reg_len: int = 2, **kwargs):
+        super().__init__(reg_len=reg_len, **kwargs)
         self.transport = transport
-        # 初始化自定义协议帧解析逻辑...
+        # 自定义二进制协议帧编解码逻辑...
 
-# 注册协议桥（支持单名称或别名列表，可设为默认）
-cio.register_bridge("i2c", ["myproto", "mp"], MyI2cBridge, is_default=False)
-
-# 即插即用连接 (通过 [myproto] 语法指定)
-dev = cio.connect("i2c[myproto]:0 @ serial:COM3,baud=115200")
+# 即插即用连接 (通过 [nc] 语法指定)
+dev = cio.connect("i2c[nc]:0,reg_len=2 @ serial:COM5,baud=2000000")
 ```
+
+#### 方式二：类对象第一等公民直接传入（无需注册别名）
+```python
+# 1. 配合 Python @ 运算符直传类
+dev = cio.i2c[NcI2cBridge](0, reg_len=2) @ cio.serial("COM5", baud=2000000)
+
+# 2. 或配合 connect() 显式参数覆盖
+dev = cio.connect("i2c:0,reg_len=2 @ serial:COM5,baud=2000000", bridge=NcI2cBridge)
+```
+
+#### 方式三：零代码侵入：`.env` 环境变量外挂声明（最适合 CI/自动化测试）
+在 `.env` 或系统环境变量中配置对应的桥类模块路径，测试脚本中直接读取 `cio.dev`：
+
+```bash
+# .env 配置文件
+CIO_DEVICE="i2c[nc]:0,reg_len=2 @ serial:COM5,baud=2000000"
+
+# 外挂桥类映射 (格式：CIO_BRIDGE_{NAME}="module_name:ClassName")
+CIO_BRIDGE_NC="controller_bridge:NcI2cBridge"
+```
+
+```python
+# 测试脚本无需显式 import 和注册桥，开箱即用：
+from cio import dev
+
+with dev:
+    dev.read_reg(0x57, 0xFFB0)  # 自动走 NC 桥二进制收发，且享有 Trace 和历史记录
+```
+
+> 💡 **内联模块语法**：定位器亦支持直接内联指定模块类路径，如 `connect("i2c[my_pkg.bridge:CustomBridge]:0 @ serial:COM5")`。
 
 ### 3. `cio.scan(kind: str | None = None) -> list[dict]`
 静默探测系统当前可用的物理硬件与串口设备，无可用设备时静默返回空列表。
@@ -97,7 +128,7 @@ dev = cio.connect("i2c[myproto]:0 @ serial:COM3,baud=115200")
 
 ```bash
 # 当前工作目录下的 .env
-CIO_DEVICE="i2c:0,reg_len=2 @ serial:COM3,baud=2000000"
+CIO_DEVICE="i2c[cb]:0,reg_len=2 @ serial:COM3,baud=2000000"
 CIO_DEVICE_POWER="serial:COM4,baud=9600"
 ```
 
@@ -197,7 +228,7 @@ with cio.ch347(0) as bridge:
 ```python
 import cio
 
-with cio.connect("i2c:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
+with cio.connect("i2c[cb]:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
     # 直接调用同步方法（无需 await，已内置快速路径优化）
     dev.write_reg(0x57, 0xFFB6, 0xFF)
     data = dev.read_reg(0x57, 0xFFB6, nbytes=1)
@@ -226,7 +257,7 @@ import asyncio
 import cio
 
 async def main():
-    async with cio.connect("i2c:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
+    async with cio.connect("i2c[cb]:0,reg_len=2,trace=on @ serial:COM3,baud=2000000") as dev:
         await dev.write_reg(0x57, 0xFFB6, 0xFF)
         val = await dev.read_reg(0x57, 0xFFB6, nbytes=1)
         print("Readback:", val.hex())
@@ -359,7 +390,7 @@ await dev.config_speed(10000000)                                         # 设�
 引脚级电平与边沿控制契约：
 
 ```python
-pin = cio.connect("gpio:1 @ serial:COM3")
+pin = cio.connect("gpio[cb]:1 @ serial:COM3")
 
 await pin.set_high()                                                     # 输出高电平
 await pin.set_low()                                                      # 输出低电平
@@ -699,7 +730,7 @@ if __name__ == "__main__":
 ```python
 import cio
 
-with cio.connect("spi:0,cs=0,trace=on @ serial:COM3,baud=2000000") as dev:
+with cio.connect("spi[cb]:0,cs=0,trace=on @ serial:COM3,baud=2000000") as dev:
     # 发送 JEDEC ID 读取指令 0x9F，接收 3 字节厂商与设备 ID
     rx = dev.transfer([0x9F, 0x00, 0x00, 0x00])
     print(f"Manufacturer ID: 0x{rx[1]:02X}, Device ID: 0x{rx[2]:02X}{rx[3]:02X}")

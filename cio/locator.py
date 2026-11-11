@@ -7,7 +7,7 @@ Standard Locator Grammar:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from cio.exceptions import InvalidLocatorError
 
@@ -46,12 +46,36 @@ class BusDescriptor:
     Descriptor for high-level logical bus contract and protocol bridge.
     """
     name: str
-    bridge: str | None = None
-    channel: int = 0
+    bridge: str | type | None = None
+    channel: int | str = 0
     kwargs: dict[str, Any] = field(default_factory=dict)
 
+    # 映射各逻辑总线的首要通道参数名称 (单一权威定义 SSOT)
+    _CHANNEL_PARAM_MAP: ClassVar[dict[str, str]] = {
+        "gpio": "pin",
+        "i2c": "bus",
+        "spi": "bus",
+    }
+
+    def to_bus_kwargs(self) -> dict[str, Any]:
+        """
+        Normalize descriptor options into kwargs for bus instantiation.
+        Single Source of Truth (SSOT) mapping the positional channel token
+        to its canonical bus parameter name ('pin' for gpio, 'bus' for others).
+        """
+        res = dict(self.kwargs)
+        param_name = self._CHANNEL_PARAM_MAP.get(self.name, "bus")
+        if param_name not in res and "channel" not in res:
+            res[param_name] = self.channel
+        return res
+
     def to_string(self) -> str:
-        bridge_str = f"[{self.bridge}]" if self.bridge else ""
+        if isinstance(self.bridge, type):
+            bridge_str = f"[{self.bridge.__name__}]"
+        elif self.bridge:
+            bridge_str = f"[{self.bridge}]"
+        else:
+            bridge_str = ""
         opts = [str(self.channel)]
         for k, v in self.kwargs.items():
             opts.append(f"{k}={v}")
@@ -62,28 +86,43 @@ class BusDescriptor:
         from cio.bus.base import AsyncBaseBus
 
         if isinstance(other, (AsyncBaseTransport, AsyncBaseBus)):
-            bus_kwargs = dict(self.kwargs)
-            if self.name == "gpio":
-                bus_kwargs.setdefault("pin", self.channel)
-            else:
-                bus_kwargs.setdefault("bus", self.channel)
+            bus_kwargs = self.to_bus_kwargs()
 
             if self.bridge is None and self.name in getattr(other, "capabilities", frozenset()):
                 factory = getattr(other, self.name, None)
                 if callable(factory):
                     return factory(**bus_kwargs)
 
-            from cio.registry import registry
-            bridge_cls = registry.get_bridge_cls(self.name, self.bridge or "cb")
+            if isinstance(self.bridge, type):
+                bridge_cls = self.bridge
+            else:
+                from cio.registry import registry
+                try:
+                    bridge_cls = registry.get_bridge_cls(self.name, self.bridge)
+                except InvalidLocatorError as e:
+                    if self.bridge is None and self.name not in getattr(other, "capabilities", frozenset()):
+                        available = list(registry._bridges.get(self.name, {}).keys())
+                        other_name = getattr(other, "name", other.__class__.__name__)
+                        raise InvalidLocatorError(
+                            f"Transport '{other_name}' does not natively support bus '{self.name}'. "
+                            f"Please specify a protocol bridge explicitly in brackets, "
+                            f"e.g. '{self.name}[cb]:{self.channel}' or "
+                            f"'{self.name}[nc]:{self.channel}'. Available bridges: {available}. "
+                            f"(Or configure CIO_DEFAULT_BRIDGE_{self.name.upper()} in your environment/.env)."
+                        ) from e
+                    raise
             return bridge_cls(other, **bus_kwargs)
 
-        if isinstance(other, TransportDescriptor):
-            from cio.factory import connect
-            return connect(f"{self.to_string()} @ {other.to_string()}")
+        if isinstance(other, (TransportDescriptor, str)):
+            if isinstance(self.bridge, type):
+                from cio.factory import connect
+                transport_target = other.to_string() if isinstance(other, TransportDescriptor) else other
+                base_transport = connect(transport_target)
+                return self @ base_transport
 
-        if isinstance(other, str):
             from cio.factory import connect
-            return connect(f"{self.to_string()} @ {other}")
+            target_str = other.to_string() if isinstance(other, TransportDescriptor) else other
+            return connect(f"{self.to_string()} @ {target_str}")
 
         return NotImplemented
 
@@ -195,42 +234,46 @@ def parse_locator(locator: str) -> LocatorDescriptor:
     # 3. 解析逻辑总线端 (Logical Bus & Bridge)
     bus_desc: BusDescriptor | None = None
     if bus_part is not None:
-        if ":" in bus_part:
-            bus_head, bus_rest = bus_part.split(":", 1)
-            bus_head = bus_head.strip()
-            bus_rest = bus_rest.strip()
-        elif "," in bus_part:
-            bus_head, bus_rest = bus_part.split(",", 1)
-            bus_head = bus_head.strip()
-            bus_rest = bus_rest.strip()
+        # 防御括号内部包含冒号或逗号 (如 i2c[pkg.mod:Class]:0)
+        bracket_depth = 0
+        split_idx = -1
+        for idx, ch in enumerate(bus_part):
+            if ch == "[":
+                bracket_depth += 1
+            elif ch == "]":
+                bracket_depth -= 1
+            elif bracket_depth == 0 and ch in (":", ","):
+                split_idx = idx
+                break
+
+        if split_idx != -1:
+            bus_head = bus_part[:split_idx].strip()
+            bus_rest = bus_part[split_idx + 1:].strip()
         else:
             bus_head = bus_part.strip()
             bus_rest = ""
 
-        # 解析协议特化桥，如 i2c[cb]
+        # 解析协议特化桥，如 i2c[cb]、i2c[nc]、i2c[pkg.mod:Class]
         if "[" in bus_head:
             if not bus_head.endswith("]"):
                 raise InvalidLocatorError(f"Unclosed bracket in bus specification: '{bus_head}' in '{raw}'.")
             b_name, b_bridge = bus_head[:-1].split("[", 1)
             bus_name = b_name.strip().lower()
-            bridge_name = b_bridge.strip().lower()
+            bridge_name = b_bridge.strip()
             if not bus_name:
                 raise InvalidLocatorError(f"Missing bus name before brackets in '{bus_head}' in '{raw}'.")
             if not bridge_name:
                 raise InvalidLocatorError(f"Empty bridge name inside brackets in '{bus_head}' in '{raw}'.")
 
-            # 约束：默认仅支持 'cb' 或在注册表中显式注册的桥
-            if bridge_name == "cb":
-                pass
-            else:
-                from cio.registry import registry
-                valid_bridges = {"cb"}
-                if registry.has_bus(bus_name):
-                    valid_bridges.update(registry._bridges.get(bus_name, {}).keys())
-                if bridge_name not in valid_bridges:
-                    raise InvalidLocatorError(
-                        f"Unsupported bridge '{bridge_name}' in '{raw}'. Currently only 'cb' (or None) is supported."
-                    )
+            from cio.registry import registry
+            if not registry.has_bridge(bus_name, bridge_name):
+                available = list(registry._bridges.get(bus_name, {}).keys())
+                raise InvalidLocatorError(
+                    f"Unsupported bridge '{bridge_name}' in '{raw}'. "
+                    f"Currently only 'cb' (or None) is supported by default. "
+                    f"Available: {available}. You can register custom bridges via cio.register_bridge('{bus_name}', '{bridge_name}', BridgeClass) "
+                    f"or set CIO_BRIDGE_{bridge_name.upper()} in your environment/.env."
+                )
         else:
             bus_name = bus_head.lower()
             bridge_name = None
@@ -255,17 +298,16 @@ def parse_locator(locator: str) -> LocatorDescriptor:
                         try:
                             bus_channel = int(tok, 0)
                         except ValueError:
-                            raise InvalidLocatorError(
-                                f"Invalid channel/pin '{tok}' for bus '{bus_name}' in '{raw}', expected integer."
-                            )
+                            if bus_name == "gpio":
+                                bus_channel = tok
+                            else:
+                                raise InvalidLocatorError(
+                                    f"Invalid channel/pin '{tok}' for bus '{bus_name}' in '{raw}', expected integer."
+                                )
                     else:
                         raise InvalidLocatorError(
                             f"Unexpected positional argument '{tok}' in bus options of '{raw}'."
                         )
-
-        # GPIO 语义增强：channel 默认为 pin
-        if bus_name == "gpio" and "pin" not in bus_kwargs:
-            bus_kwargs["pin"] = bus_channel
 
         bus_desc = BusDescriptor(name=bus_name, bridge=bridge_name, channel=bus_channel, kwargs=bus_kwargs)
 
@@ -274,27 +316,33 @@ def parse_locator(locator: str) -> LocatorDescriptor:
 
 class BusFactory:
     """
-    Callable and indexable bus descriptor factory supporting both:
+    Callable and indexable bus descriptor factory supporting:
       - cio.i2c(0, reg_len=2)
       - cio.i2c["cb"](reg_len=2)
+      - cio.i2c[NcI2cBridge](reg_len=2)
     """
 
-    def __init__(self, name: str, bridge: str | None = None):
+    def __init__(self, name: str, bridge: str | type | None = None):
         self.name = name
         self.bridge = bridge
 
-    def __getitem__(self, bridge: str) -> BusFactory:
+    def __getitem__(self, bridge: str | type) -> BusFactory:
+        if isinstance(bridge, type):
+            return BusFactory(self.name, bridge)
         if not isinstance(bridge, str) or not bridge.strip():
-            raise InvalidLocatorError("Bridge name must be a non-empty string.")
+            raise InvalidLocatorError("Bridge must be a non-empty string identifier or a bridge class.")
         return BusFactory(self.name, bridge.strip())
 
-    def __call__(self, channel: int = 0, **kwargs: Any) -> BusDescriptor:
-        if self.name == "gpio" and "pin" not in kwargs:
-            kwargs["pin"] = channel
+    def __call__(self, channel: int | str = 0, **kwargs: Any) -> BusDescriptor:
         return BusDescriptor(name=self.name, bridge=self.bridge, channel=channel, kwargs=kwargs)
 
     def __repr__(self) -> str:
-        br = f"[{self.bridge}]" if self.bridge else ""
+        if isinstance(self.bridge, type):
+            br = f"[{self.bridge.__name__}]"
+        elif self.bridge:
+            br = f"[{self.bridge}]"
+        else:
+            br = ""
         return f"<BusFactory {self.name}{br}>"
 
 
