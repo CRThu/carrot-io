@@ -63,8 +63,15 @@
 > - **单 `@` 物理隔离边界**：以 `@` 分界，左侧为高层应用协议/总线逻辑（`i2c[cb]:0,reg_len=2`），右侧为物理传输链路（`serial:COM3,baud=2000000`）；
 > - **显式协议桥契约**：对于原生具备总线能力的硬件（如 `ch347:0`），直接直通；对于生肉字节流信道（`serial` / `tcp`），必须显式指明协议桥（如 `i2c[cb]:0` 或 `i2c[nc]:0`），或通过 `.env` 中的 `CIO_DEFAULT_BRIDGE_I2C` 声明默认桥，彻底告别隐式协议假设；
 > - **Python 运算符重载与类直传**：支持 `bus = cio.i2c["cb"](0) @ cio.serial(...)`，亦支持直传协议桥类 `bus = cio.i2c[MyBridgeClass](0) @ cio.serial(...)`；
-> - **通用参数：**
->   - `trace=on` / `trace=true`：自动开启控制台收发通信流实时 Trace。
+> - **通用定位器参数：**
+>   - `trace=on` / `trace=off`：开启或关闭控制台通信实时 Trace 打印（支持 `on/off`, `1/0`, `true/false`）。
+>   - `bridge_trace=on`：在协议桥层（如 CarrotBridge）开启对下位机底层 ASCII 命令帧（`[CMD]` / `[RETURN]`）的追踪。
+>   - `show.ascii=0/1`：控制是否展示 ASCII 字符预览列（常用于 EEPROM/二进制测试隐藏乱码字符，如 `show.ascii=0`）。
+>   - `show.hex=0/1`：控制是否展示十六进制原始字节列。
+>   - `show.time=0/1`：控制是否展示时间戳前缀 `[HH:MM:SS.mmm]`。
+>   - `show.len=0/1`：控制是否展示字节长度标签 `(XX B)`。
+>   - `show.color=0/1`：强制开启或关闭控制台 ANSI 着色渲染。
+>   - `max_bytes=N`：单条追踪记录最大截断展示字节数（默认 `64`）。
 >   - `timeout=2.0`：统一设置默认 I/O 超时（秒），默认全库生效防挂死，支持显式传参或 `timeout=None` 覆盖。
 >   - `buffer_size=16777216`：流传输（Serial / TCP / UDP / VISA / FTDI）默认统一配备 16MB 动态安全缓冲区，零内存空耗。
 
@@ -294,28 +301,41 @@ asyncio.run(main())
 | `dump_history()` | `dev.dump_history(limit=20, color=False) -> str` | 获取格式化后的 TX/RX 跟踪文本流 |
 | `bind()` | `dev.bind(codec: BaseCodec) -> ProtocolTransport` | 绑定编解码器生成强类型协议对象 |
 
-#### 通信追踪格式化与展示配置 (`dev.trace.show`)
+#### 通信追踪体系与分层透视 (`dev.trace` / `dev.trace.show`)
 
-`dev.trace` 提供了对控制台实时 Trace 与历史 Dump 格式的结构化控制器 `trace.show`：
+`cio` 采用严格分层的通信追踪模型，在不同抽象层级提供对应的追踪视角：
+
+##### 1. 三层追踪架构与输出对比
+
+| 追踪层级 | 开启方式 | 核心标签 | 关注内容与格式示例 |
+|---|---|---|---|
+| **逻辑总线层** | `i2c[cb]:...,trace=on` | `[I2C]` / `[SPI]` / `[GPIO]` | **业务总线原子事务**（地址、寄存器、读写有效载荷，隐藏中间写地址操作）：<br>`[12:00:00.000] [I2C] RD 0x57 @ 0xFFB0      <- 10 (1B)`<br>`[12:00:00.005] [I2C] WR 0x57 @ 0xFFE6      -> 55 (1B)`<br>`[12:00:00.010] [I2C] SCAN                  <- [0x57] (Found 1)` |
+| **协议桥网关层** | `i2c[cb]:...,bridge_trace=on` | `[CMD]` / `[RETURN]` / `[MSG]` | **下位机固件 ASCII 交互**（指令下发、标准回包、异步日志）：<br>`[12:00:00.000] [CMD]    -> IIC.W(0x57, 0xFFB0, 2) (23B)`<br>`[12:00:00.001] [RETURN] <- [RETURN]: 2 (13B)`<br>`[12:00:00.002] [CMD]    -> IIC.R(0x57, 1) (15B)`<br>`[12:00:00.003] [RETURN] <- [RETURN]: 0x10 (16B)` |
+| **物理信道层** | `serial:...,trace=on` | `[TX]` / `[RX]` | **原始字节流收发**（十六进制 Hex Dump、ASCII 预览与字节数）：<br>`[12:00:00.015] [TX] -> 48 45 4C 4C 4F (5B) \| HELLO`<br>`[12:00:00.018] [RX] <- 57 4F 52 4C 44 (5B) \| WORLD` |
+
+##### 2. 追踪展示控制器 (`dev.trace.show`)
+
+`dev.trace` 提供了对控制台实时 Trace 与历史 Dump 格式的结构化控制器 `trace.show`，支持**定位器单点内联声明**与**代码动态点选**两种方式：
+
+```dotenv
+# 推荐实践：在 .env 硬件定位器中单点声明展示参数（全局所有测试脚本免写代码，零样板侵入）：
+CIO_DEVICE="i2c[cb]:0,reg_len=2,trace=on,show.ascii=0 @ serial:COM3,baud=2000000"
+```
 
 ```python
+# 亦可在代码中动态点选配置：
 # 1. 结构化属性点选控制
 dev.trace.show.hex = False       # 隐藏十六进制原始字节流
-dev.trace.show.ascii = False     # 隐藏 ASCII 文本预览
+dev.trace.show.ascii = False     # 隐藏 ASCII 文本预览（EEPROM/二进制测试推荐）
 dev.trace.show.time = False      # 隐藏时间戳前缀 [HH:MM:SS.mmm]
 dev.trace.show.len = False       # 隐藏字节长度 (XX B)
+dev.trace.show.color = False     # 强制关闭 ANSI 着色
 dev.trace.show.max_bytes = 32    # 限制单条最大展示字节数（超长自动截断）
 
 # 2. 批量函数式链式调用
 dev.trace.show(ascii=False, len=False, max_bytes=16)
 
-# 3. 追踪输出效果（统一物理流向 -> / <-，I2C 语义自动精准对齐）
-# [12:00:00.000] [I2C] RD 0x57 @ 0xFFB0      <- 10 (1B)
-# [12:00:00.005] [I2C] WR 0x57 @ 0xFFE6      -> 55 (1B)
-# [12:00:00.010] [I2C] SCAN                  <- [0x57] (Found 1)
-# [12:00:00.015] [TX] -> 48 45 4C 4C 4F (5B) | HELLO
-
-# 4. 获取历史转储
+# 3. 调取历史转储（用于异常上报与日志持久化）
 print(dev.dump_history(limit=10))
 ```
 
