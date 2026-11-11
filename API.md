@@ -55,7 +55,7 @@
 | **CH347 原生 SPI** | `spi:0,frequency=15000000,mode=0,cs=0 @ ch347:0` | 显式指定 CH347 硬件原生 SPI 主机（原生硬件无需桥），参数：`frequency=`, `mode=0/1/2/3`, `cs=0/1` |
 | **GPIO 引脚控制** | `gpio[cb]:1 @ serial:COM3,baud=2000000` | 串口底座挂接 CarrotBridge GPIO 引脚控制 |
 | **CH347 原生 GPIO**| `gpio:3 @ ch347:0` | 显式指定 CH347 硬件原生 GPIO 引脚控制（原生硬件无需桥），参数：`pin=0~7` |
-| **VISA 仪器设备** | `visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=5.0` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `read_termination=`, `backend=@ni` |
+| **VISA 仪器设备** | `visa:USB0::0x2A8D::0x9007::MY63160152::INSTR,timeout=5.0` | PyVISA 仪表（示波器/万用表/信号源/GPIB/VXI），参数：`timeout=5.0`, `encoding=ascii`, `read_termination=`, `backend=@ni` |
 | **外挂协议桥** | `i2c[nc]:0,reg_len=2 @ serial:COM5,baud=2000000` | 方括号显式指定协议桥（支持 `cb`、外挂别名 `nc` 或内联 `module:Class`） |
 | **RPC 硬件代理** | `rpc:192.168.1.50:8000/COM1,baud=115200` | 跨网络机器远程硬件透明代理 |
 
@@ -167,7 +167,7 @@ cio.close_all_devices()         # 批量回收关闭所有单例
 - `cio.udp(host="127.0.0.1", port=5025, timeout=2.0, buffer_size=16MB, **kwargs)`（已升级为流式传输，完整支持按行读取）
 - `cio.ftdi(url="ftdi://ftdi:232h/1", baud=115200, timeout=2.0, buffer_size=16MB, **kwargs)`
 - `cio.ch347(index=0, timeout=2.0, buffer_size=16MB, **kwargs)`
-- `cio.visa(resource_name, timeout=5.0, buffer_size=16MB, **kwargs)`
+- `cio.visa(resource_name, timeout=5.0, encoding="ascii", buffer_size=16MB, **kwargs)`
 - `cio.start_rpc_server(host="0.0.0.0", port=8000)`
 
 ### 6. 单物理底座多路复用（I2C + SPI + GPIO 共用同一串口）
@@ -343,17 +343,17 @@ print(dev.dump_history(limit=10))
 
 ### 2. 字节流传输 (`AsyncStreamTransport` / `AsyncUartTransport`)
 
-针对 TCP、UDP、Serial 串口、FTDI UART、CH347 等所有流式通道提供高级流操作（全库统一默认 2.0s 超时与 16MB 动态安全缓冲区）：
+针对 TCP、UDP、Serial 串口、FTDI UART、CH347 及 VISA 仪表等所有流式通道提供高级流操作（全库统一默认 2.0s 超时、VISA 仪表统一默认 5.0s 超时与 16MB 动态安全缓冲区）：
 
 ```python
 # 同步调用
 data = dev.read_exact(16)            # 精确读取 16 字节，不足则等待直到超时
-line = dev.read_until(b"\n")         # 读取直到遇到指定分隔符（如换行符）
+line = dev.read_until("\n")          # 读取直到遇到指定分隔符（支持 "\n" 字符串或 b"\n" 原始字节）
 dev.flush()                          # 清空 FifoBuffer 缓冲数据
 
 # 异步调用 (加 await)
 data = await dev.read_exact(16)
-line = await dev.read_until(b"\r\n", timeout=1.0)
+line = await dev.read_until("\r\n", timeout=1.0)
 ```
 
 ---
@@ -443,6 +443,65 @@ with cio.udp("192.168.1.100", 5025, timeout=2.0) as dev:
 
 #### ② 专有离散报文包基类 (`AsyncPacketTransport`)
 针对 CANbus 帧、遥测广播等不可流式化的非文本离散报文，可基于 `AsyncPacketTransport` 实现，支持 `DEFAULT_PACKET_QUEUE_SIZE = 1024` 的安全队列深度控制。
+
+---
+
+### 7. 工业仪器与 VISA 传输体系 (`VisaTransport`)
+
+针对 USB-TMC、GPIB、VXI、以太网 SCPI 仪器（示波器、静电计、万用表、信号源等）提供专有物理流封装。兼容系统安装的 **NI-VISA**、**Keysight VISA** 运行库或纯 Python 后端（`PyVISA-py`）。
+
+#### ① 显式能力声明与工业默认参数
+- **支持前缀**：`visa:`、`gpib:`、`vxi:`
+- **能力集合**：`capabilities = frozenset({"stream", "visa"})`
+- **默认超时**：统一为工业仪表专用的 **`5.0s`**（普通流为 2.0s）
+- **默认编码**：严格遵循 SCPI / IEEE 488.2 物理标准的 **7-bit ASCII**（`encoding="ascii"`），在发送端就地拦截中文全角标点等非法字符（抛出 `UnicodeEncodeError`），杜绝脏数据进入总线队列
+
+#### ② 定位器与参数配置表
+
+| 定位器参数 | 默认值 | 说明与示例 |
+|---|---|---|
+| `timeout` | `5.0` | 通信与查询超时时间（秒）：`timeout=5.0` |
+| `encoding` | `"ascii"` | SCPI 文本编解码格式，支持自定义覆盖：`encoding=utf-8`、`encoding=latin-1` |
+| `read_termination` | `None` | 读取定界符（USBTMC/GPIB 依赖硬件 EOI 信号；串口 ASRL / Socket 仪器推荐设为 `\n`） |
+| `write_termination`| `None` | 写入定界符（字符串写入未以此结尾时自动补齐换行，默认 `\n`） |
+| `backend` | `None` | 显式指定 VISA 运行时后端：`backend=@ni`、`backend=@keysight` 或 `backend=@py` |
+| `chunk_size` | `4096` | 每次物理切片读取缓冲区大小（字节） |
+| `buffer_size` | `16MB` | 软件 FIFO 环形缓冲区上限 |
+
+#### ③ 核心方法与 SCPI 交互契约
+
+| 方法签名 | 说明 | 示例 |
+|---|---|---|
+| `query(cmd, delay=0.0, timeout=None)` | **原子问答事务**：发送前自动排空残余 FIFO 缓冲（杜绝回包错位），等待后回读。<br>若 `cmd` 为 `str`，按 `encoding` 解码并剔除末尾 `\r\n` 返回字符串；若为 `bytes`，直接返回原始字节。 | `idn = inst.query("*IDN?")`<br>`val = float(inst.query(":MEAS:CURR?"))` |
+| `query_raw(cmd, delay=0.0, timeout=None) -> bytes` | **二进制无损读取**：专为示波器波形（`:WAV:DATA?`）、内部寄存器 dump 设计。无论 `cmd` 传文本还是字节，一律返回纯原始 `bytes`，绝不触发字符解码破坏波形。 | `raw_bytes = inst.query_raw(":WAV:DATA?")` |
+| `write(data, timeout=None) -> int` | 发送 SCPI 指令或原始数据。若 `data` 为 `str`，自动补齐换行并通过 `encoding` 编码为字节后发送。 | `inst.write("*RST")`<br>`inst.write(":CHAN1:DISP ON")` |
+| `clear() -> None` / `flush() -> None` | **软硬件同步复位**：触发 VISA `viClear()` 硬件总线复位清除仪器队列，并**同步排空内部软件 FIFO 缓冲**，确保状态机绝对干净。 | `inst.clear()` / `inst.flush()` |
+| `read(nbytes=-1)` / `read_until(delimiter)` | 基础流读取（`read_until` 兼容 `"\n"` 或 `b"\n"`）。 | `line = inst.read_until("\n")` |
+
+#### ④ 调用范式示例
+
+```python
+import cio
+
+# 1. 快捷工厂函数直连（同步范式）
+with cio.visa("USB0::0x2A8D::0x9A01::MY61390950::INSTR", timeout=5.0) as inst:
+    print("设备标识:", inst.query("*IDN?"))
+    inst.write(":SENS:CURR:RANG:AUTO ON")
+
+    # 标量量测读取
+    current = float(inst.query(":MEAS:CURR?"))
+    print(f"当前电流: {current:.3e} A")
+
+    # 读取原始二进制波形数据（使用 query_raw）
+    raw_waveform = inst.query_raw(":WAV:DATA?")
+    print(f"读取波形字节数: {len(raw_waveform)}")
+
+# 2. 原生协程异步范式
+async def run():
+    async with cio.connect("visa:USB0::0x2A8D::0x9A01::MY61390950::INSTR,encoding=ascii") as inst:
+        idn = await inst.query("*IDN?")
+        raw = await inst.query_raw(":WAV:DATA?")
+```
 
 
 
@@ -763,13 +822,17 @@ import cio
 # 方式 A: 原生 VISA 示波器交互（支持 USB-TMC、GPIB、TCPIP 仪器）
 # 自动通过系统安装的 NI-VISA / Keysight VISA 驱动与 PyVISA 访问
 with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
-    # 1. 询问仪器标识（直接传 SCPI 字符串，自动解码返回 str）
+    # 1. 询问仪器标识（直接传 SCPI 字符串，严格按照 7-bit ASCII 编码交互并返回 str）
     idn = scope.query("*IDN?")
     print("Oscilloscope IDN:", idn)
 
     # 2. 发送控制指令（直接传 SCPI 字符串，自动补换行）
     scope.write("*CLS")
     scope.write(":AUToscale")
+
+    # 3. 读取原始二进制波形数据（使用 query_raw 保证二进制零编码污染）
+    raw_waveform = scope.query_raw(":WAV:DATA?")
+    print("Raw Waveform bytes:", len(raw_waveform))
 
 # 方式 B: 原生网络 TCP SCPI 仪器交互
 with cio.connect("tcp:192.168.1.100:5025,trace=on") as dev:

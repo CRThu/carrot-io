@@ -183,18 +183,20 @@ def ch347(
 def visa(
     resource_name: str,
     timeout: float | None = 5.0,
+    encoding: str = "ascii",
     backend: str | None = None,
     read_termination: str | None = None,
     write_termination: str | None = None,
     buffer_size: int = DEFAULT_BUFFER_SIZE,
     **kwargs,
 ) -> AsyncStreamTransport:
-    """Create a VISA instrument transport instance with default 5.0s timeout."""
+    """Create a VISA instrument transport instance with default 5.0s timeout and ascii encoding."""
     from cio.backends.visa import VisaTransport
 
     return VisaTransport(
         resource_name=resource_name,
         timeout=timeout,
+        encoding=encoding,
         backend=backend,
         read_termination=read_termination,
         write_termination=write_termination,

@@ -136,8 +136,9 @@ with cio.visa("USB0::0x2A8D::0x9007::MY63160152::INSTR", timeout=5.0) as scope:
     scope.write("*CLS")
     scope.write(":AUToscale")
 
-    # 若需要读取波形数据块等原始二进制，直接传入 bytes 即可获取原始 bytes
-    # raw_wave = scope.query(b":WAV:DATA?\n")
+    # 读取示波器波形数据块等原始二进制数据 (使用专属 query_raw，零编解码污染)
+    raw_wave = scope.query_raw(":WAV:DATA?")
+    print("读取波形原始字节数:", len(raw_wave))
 ```
 
 ### 3. I2C 传感器与 SPI 外设读写
@@ -299,16 +300,17 @@ with cio.Collector("run.csv") as col:
 无需每次翻阅底层源码与完整手册，核心类名、方法签名与极简用法速查：
 
 ### 1. 物理流传输类 (`AsyncStreamTransport` / `VisaTransport`)
-> 适用于：串口 (Serial)、TCP、UDP、VISA 示波器与工业仪器、FTDI、CH347（全系列统一默认 `timeout=2.0s` 与 `buffer_size=16MB`）
+> 适用于：串口 (Serial)、TCP、UDP、VISA 示波器与工业仪器、FTDI、CH347（全系列统一默认 `buffer_size=16MB`，常规流默认 `timeout=2.0s`，VISA 仪表特殊默认 `timeout=5.0s`）
 
 | API 方法 | 概述与说明 | 极简调用示例 |
 |---|---|---|
-| `write(data)` | 发送数据（支持 `bytes` 原始字节流；VISA 下支持 `str` 自动补换行） | `dev.write(b"PING\n")` / `scope.write("*RST")` |
+| `write(data)` | 发送数据（支持 `bytes` 原始字节流；VISA 下支持 `str` 自动补换行与 7-bit ASCII 编码） | `dev.write(b"PING\n")` / `scope.write("*RST")` |
 | `read(nbytes=-1)` | 从缓冲区读取指定字节数（`-1` 读取当前所有可用字节） | `data = dev.read()` |
-| `read_until(delimiter)` | 读取直到遇到目标定界符（如换行符 `b"\n"`） | `line = dev.read_until(b"\n")` |
+| `read_until(delimiter)` | 读取直到遇到目标定界符（支持 `b"\n"` 原始字节或 `"\n"` 字符串） | `line = dev.read_until("\n")` |
 | `read_exact(n)` | 精确读取固定字节数（未读满前保持阻塞/等待直到超时） | `data = dev.read_exact(16)` |
-| `query(cmd, delay=0)` | 原子事务：发送指令并立即读取回包（VISA 下传入 `str` 自动返回解码 `str`） | `idn = scope.query("*IDN?")` |
-| `flush()` / `clear()` | 避脏缓冲区：清空底层 OS 物理驱动 FIFO 与内部缓冲（VISA 下触发 `viClear`） | `dev.flush()` / `scope.clear()` |
+| `query(cmd, delay=0)` | 原子事务：发送指令并立即读取回包（防串包排空 FIFO；VISA 下传入 `str` 自动返回解码 `str`） | `idn = scope.query("*IDN?")` |
+| `query_raw(cmd, delay=0)` | 二进制原子事务：发送指令并回读原始字节（专为示波器波形 `:WAV:DATA?` 设计，免除字符解码污染） | `raw = scope.query_raw(":WAV:DATA?")` |
+| `flush()` / `clear()` | 软硬件同步复位：清空底层 OS/硬件总线 FIFO 与 Python 内部缓冲（VISA 下触发 `viClear`） | `dev.flush()` / `scope.clear()` |
 | `dump_history(limit)` | 导出最近 TX/RX 通讯日志字符串（微秒时间戳、方向、Hex 对齐） | `print(dev.dump_history(10))` |
 
 ### 2. I2C 主机总线类 (`AsyncI2cBus` / `AsyncI2cBridge`)

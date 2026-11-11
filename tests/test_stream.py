@@ -42,9 +42,10 @@ async def test_stream_transport_methods():
 
     await dev.flush()
 
-    # valid read_until and read_exact
-    dev.push_rx(b"LINE1\nEXACT4B")
+    # valid read_until and read_exact (including str delimiter normalization)
+    dev.push_rx(b"LINE1\nLINE2\r\nEXACT4B")
     assert await dev.read_until(b"\n") == b"LINE1\n"
+    assert await dev.read_until("\r\n") == b"LINE2\r\n"
     assert await dev.read_exact(7) == b"EXACT4B"
 
     await dev.close()

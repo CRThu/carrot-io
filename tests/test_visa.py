@@ -280,17 +280,86 @@ async def test_visa_clear_and_flush():
 
     transport = VisaTransport(resource_name="MOCK::CLEAR")
 
-    # 未打开时调用不抛异常
+    # 未打开时调用不抛异常，但仍清空软件 FIFO
+    transport.fifo.write(b"LEFTOVER_BEFORE_OPEN")
+    assert len(transport.fifo) > 0
     await transport.clear()
+    assert len(transport.fifo) == 0
+
+    transport.fifo.write(b"LEFTOVER_FLUSH")
     await transport.flush()
+    assert len(transport.fifo) == 0
 
     with patch("pyvisa.ResourceManager", return_value=mock_rm):
         await transport.open()
+        transport.fifo.write(b"DIRTY_BYTES")
         await transport.clear()
+        assert len(transport.fifo) == 0
         mock_inst.clear.assert_called_once()
 
+        transport.fifo.write(b"MORE_DIRTY_BYTES")
         await transport.flush()
+        assert len(transport.fifo) == 0
         assert mock_inst.clear.call_count == 2
         await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_visa_query_fifo_anti_crosstalk():
+    mock_rm = MagicMock()
+    mock_inst = MagicMock()
+    mock_rm.open_resource.return_value = mock_inst
+
+    # 模拟两次命令响应
+    responses = [b"RESP_FOR_NEW_CMD\n"]
+    mock_inst.write_raw.side_effect = lambda d: len(d)
+    mock_inst.read_raw.side_effect = lambda: responses.pop(0)
+
+    with patch("pyvisa.ResourceManager", return_value=mock_rm):
+        transport = VisaTransport(resource_name="MOCK::CROSSTALK")
+        await transport.open()
+
+        # 模拟上一操作遗留未读脏数据
+        transport.fifo.write(b"OLD_STALE_RESIDUAL_DATA")
+        assert len(transport.fifo) > 0
+
+        # 执行新查询，必须自动排空旧脏数据，返回物理仪器的最新回包
+        ans = await transport.query("*IDN?")
+        assert ans == "RESP_FOR_NEW_CMD"
+        assert len(transport.fifo) == 0
+
+        await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_visa_query_raw_and_ascii_encoding():
+    mock_rm = MagicMock()
+    mock_inst = MagicMock()
+    mock_rm.open_resource.return_value = mock_inst
+
+    mock_inst.write_raw.side_effect = lambda d: len(d)
+    mock_inst.read_raw.return_value = b"\x00\x01\x02\x03\x04\n"
+
+    with patch("pyvisa.ResourceManager", return_value=mock_rm):
+        # 1. 验证 query_raw 即使传 str 也返回 raw bytes
+        transport = VisaTransport(resource_name="MOCK::RAW")
+        await transport.open()
+
+        raw_resp = await transport.query_raw(":WAV:DATA?")
+        assert raw_resp == b"\x00\x01\x02\x03\x04\n"
+
+        # 2. 验证默认 ascii 编码：若包含中文全角符号直接在发送端抛出 UnicodeEncodeError
+        with pytest.raises(UnicodeEncodeError):
+            await transport.write("：MEAS：VOLT？")
+
+        # 3. 验证自定义 encoding=utf-8
+        transport_utf8 = VisaTransport(resource_name="MOCK::UTF8", encoding="utf-8")
+        await transport_utf8.open()
+        w_len = await transport_utf8.write("：MEAS：VOLT？")
+        assert w_len > 0
+
+        await transport.close()
+        await transport_utf8.close()
+
 
 

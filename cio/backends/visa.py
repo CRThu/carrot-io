@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from cio.converters import BytesLike
 from cio.exceptions import (
     CDllMissingError,
     ConnectionError,
@@ -66,6 +67,7 @@ class VisaTransport(AsyncStreamTransport):
         address: str | None = None,
         backend: str | None = None,
         timeout: float | None = 5.0,
+        encoding: str = "ascii",
         read_termination: str | None = None,
         write_termination: str | None = None,
         chunk_size: int = 4096,
@@ -77,6 +79,7 @@ class VisaTransport(AsyncStreamTransport):
         super().__init__(timeout=actual_timeout, buffer_size=buffer_size, **kwargs)
         self.resource_name = actual_resource
         self.backend = backend
+        self.encoding = encoding
         self.read_termination = read_termination
         self.write_termination = write_termination
         self.chunk_size = chunk_size
@@ -210,37 +213,56 @@ class VisaTransport(AsyncStreamTransport):
     async def write(self, data: BytesLike | str, timeout: float | None = None) -> int:
         """
         Write raw bytes or SCPI command string concurrency-safely.
-        If data is str, automatically appends newline termination if missing.
+        If data is str, automatically appends newline termination if missing
+        and encodes using self.encoding (default: ascii).
         """
         if isinstance(data, str):
             term = self.write_termination or "\n"
             if not data.endswith(term):
                 data = data + term
-            raw_data = data.encode("utf-8")
+            raw_data = data.encode(self.encoding)
         else:
             raw_data = data
 
         return await super().write(raw_data, timeout=timeout)
+
+    async def query_raw(
+        self, cmd: BytesLike | str, delay: float = 0.0, timeout: float | None = None
+    ) -> bytes:
+        """
+        Atomic transaction: purge residual FIFO buffer, write command, and return raw response bytes.
+        Pre-emptively purges software FIFO buffer before writing to prevent cross-talk dislocation.
+        """
+        async with self._get_query_lock():
+            async with self._get_read_lock():
+                self.fifo.clear()
+            await self.write(cmd, timeout=timeout)
+            if delay > 0:
+                await asyncio.sleep(delay)
+            return await self.read(-1, timeout=timeout)
 
     async def query(
         self, cmd: BytesLike | str, delay: float = 0.0, timeout: float | None = None
     ) -> Any:
         """
         Write command, wait delay if specified, and return response (atomic transaction).
-        - If cmd is str: returns decoded and stripped string response.
-        - If cmd is BytesLike: returns raw bytes response (ideal for waveform data).
+        - If cmd is str: returns decoded and stripped string response using self.encoding.
+        - If cmd is BytesLike: returns raw bytes response.
         """
         is_str = isinstance(cmd, str)
-        raw_resp = await super().query(cmd, delay=delay, timeout=timeout)
+        raw_resp = await self.query_raw(cmd, delay=delay, timeout=timeout)
         if is_str:
-            return raw_resp.decode("utf-8", errors="replace").strip("\r\n")
+            return raw_resp.decode(self.encoding).strip("\r\n")
         return raw_resp
 
     async def clear(self) -> None:
         """
         Clear device I/O buffers and reset message state via VISA viClear().
-        Flushes and skips any stale or leftover response from previous operations.
+        Synchronously flushes the internal software FIFO buffer to eliminate stale data.
         """
+        async with self._get_read_lock():
+            self.fifo.clear()
+
         if not self._inst or not self._is_open:
             return
         loop = asyncio.get_running_loop()
@@ -250,7 +272,7 @@ class VisaTransport(AsyncStreamTransport):
             pass
 
     async def flush(self) -> None:
-        """Alias to clear() for universal interface consistency."""
+        """Flush both hardware bus and internal software FIFO buffer."""
         await self.clear()
 
 

@@ -167,9 +167,16 @@ class AsyncStreamTransport(AsyncBaseTransport):
                 raise ReadTimeoutError(f"Insufficient bytes read before EOF ({len(self.fifo)}/{nbytes})")
             return res
 
-    async def read_until(self, delimiter: bytes = b"\n", timeout: float | None = None) -> bytes:
+    async def read_until(
+        self, delimiter: BytesLike | str = b"\n", timeout: float | None = None
+    ) -> bytes:
         """Read until delimiter is found."""
-        if not delimiter:
+        if isinstance(delimiter, str):
+            delim_bytes = delimiter.encode("utf-8")
+        else:
+            delim_bytes = ensure_bytes(delimiter)
+
+        if not delim_bytes:
             raise ValueError("Delimiter must not be empty")
 
         if not self._is_open:
@@ -180,7 +187,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
 
         async with self._get_read_lock():
             while True:
-                res = self.fifo.read_until(delimiter)
+                res = self.fifo.read_until(delim_bytes)
                 if res is not None:
                     return res
 
@@ -188,19 +195,19 @@ class AsyncStreamTransport(AsyncBaseTransport):
                     elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = effective_timeout - elapsed
                     if remaining <= 0:
-                        raise ReadTimeoutError(f"read_until({delimiter!r}) timed out after {effective_timeout}s")
+                        raise ReadTimeoutError(f"read_until({delim_bytes!r}) timed out after {effective_timeout}s")
                     try:
                         fetched = await asyncio.wait_for(self._fetch_more(), timeout=remaining)
                     except asyncio.TimeoutError as err:
-                        raise ReadTimeoutError(f"read_until({delimiter!r}) timed out after {effective_timeout}s") from err
+                        raise ReadTimeoutError(f"read_until({delim_bytes!r}) timed out after {effective_timeout}s") from err
                 else:
                     fetched = await self._fetch_more()
 
                 if not fetched:
-                    res = self.fifo.read_until(delimiter)
+                    res = self.fifo.read_until(delim_bytes)
                     if res is not None:
                         return res
-                    raise ReadTimeoutError(f"EOF reached without finding delimiter {delimiter!r}")
+                    raise ReadTimeoutError(f"EOF reached without finding delimiter {delim_bytes!r}")
 
     async def flush(self) -> None:
         """Clear internal fifo buffer."""

@@ -15,7 +15,7 @@
  2. 协议桥层:    CarrotBridge / AsyncI2cBridge / AsyncSpiBridge / AsyncGpioBridge / RpcRemoteTransport
  3. 传输与总线:  AsyncBaseTransport -> AsyncStreamTransport (Tcp/Udp/Serial/Ftdi/Ch347/Visa 统一切片流) / AsyncUartTransport
                  AsyncBaseBus -> AsyncI2cBus / AsyncSpiBus / AsyncGpioBus
- 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport (全系列默认 timeout=2.0, buffer_size=16MB)
+ 4. 后端适配器:  TcpTransport / UdpTransport / SerialTransport / Ftdi* / Ch347* / VisaTransport (通用流默认 timeout=2.0, VisaTransport 仪表默认 timeout=5.0, buffer_size=16MB)
  5. 底层驱动层:  asyncio Socket / PySerial / PyFTDI / CH347 DLL / C DLLs (visa32)
 ```
 
