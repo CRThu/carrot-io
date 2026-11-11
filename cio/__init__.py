@@ -14,7 +14,7 @@ from cio.transports.base import (
     SyncTransportWrapper,
 )
 from cio.converters import BytesLike, ensure_bytes
-from cio.trace.logger import IoLogger, LogEntry
+from cio.trace.trace import ShowController, TraceController, TraceEntry
 from cio.transports.stream import AsyncStreamTransport
 from cio.transports.packet import AsyncPacketTransport
 from cio.transports.uart import AsyncUartTransport
@@ -264,8 +264,9 @@ __all__ = [
     "InvalidUrlError",
     "DeviceConfigError",
     "UnsupportedCapabilityError",
-    "IoLogger",
-    "LogEntry",
+    "TraceController",
+    "ShowController",
+    "TraceEntry",
     "BytesLike",
     "ensure_bytes",
     "close_device",

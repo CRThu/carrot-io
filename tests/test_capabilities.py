@@ -86,8 +86,8 @@ def test_async_gpio_bus_inherits_async_base_bus():
     assert isinstance(pin, AsyncBaseBus)
     assert isinstance(pin, AsyncGpioBus)
 
-    # Logger and history integration
-    assert hasattr(pin, "logger")
+    # Trace and history integration
+    assert hasattr(pin, "trace")
     assert hasattr(pin, "history")
     assert hasattr(pin, "dump_history")
 

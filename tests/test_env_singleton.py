@@ -97,7 +97,8 @@ def test_dev_lazy_proxy_and_getitem():
     # Properties pass-through
     assert dev.is_open is True
     dev.trace = False
-    assert dev.trace is False
+    assert dev.trace == False
+    assert dev.trace.enabled is False
     assert repr(dev).startswith("<")
 
     # dev["power"] dictionary subscript access for multi-device setup
@@ -154,7 +155,8 @@ def test_lazy_device_proxy_setattr_passthrough(monkeypatch):
     """Verify that setting attributes on cio.dev updates the underlying default device."""
     monkeypatch.setenv("CIO_DEVICE", "mock:dut_setattr")
     dev.trace = True
-    assert dev.raw.trace is True
+    assert dev.raw.trace == True
+    assert dev.raw.trace.enabled is True
     dev.timeout = 4.2
     assert dev.raw.timeout == 4.2
 

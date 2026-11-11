@@ -32,7 +32,7 @@ async def test_carrot_bridge_basic_call():
 
     assert res == 0
     assert pipe.tx_history[0] == b"Motor_SetSpeed(1, 100)\n"
-    entries = bridge.logger.get_entries()
+    entries = bridge.trace.history()
     assert len(entries) == 2
     assert entries[0].direction == "OUT"
     assert b"Motor_SetSpeed" in entries[0].data
@@ -56,7 +56,7 @@ async def test_carrot_bridge_non_return_logging():
     res = await bridge.call("Init")
     assert res == 1
 
-    entries = bridge.logger.get_entries()
+    entries = bridge.trace.history()
     assert len(entries) >= 4
     assert any(b"[MSG]: System initialization complete" in e.data for e in entries)
     assert any(b"DEBUG: Sensor calibrated" in e.data for e in entries)
@@ -529,7 +529,7 @@ async def test_i2c_bridge_semantic_trace_logging():
     assert hist[0].tag == "I2C"
     assert hist[0].meta["op"] == "RD"
     assert hist[0].meta["reg"] == 0xFFB0
-    line1 = hist[0].format_line(color=False, show_ascii=False)
+    line1 = hist[0].format_line(color=False, ascii=False)
     assert "[I2C]" in line1
     assert "RD 0x57 @ 0xFFB0" in line1
     assert "<- 10 (1B)" in line1
@@ -539,7 +539,7 @@ async def test_i2c_bridge_semantic_trace_logging():
     hist = i2c.history()
     assert len(hist) == 2
     assert hist[1].meta["op"] == "WR"
-    line2 = hist[1].format_line(color=False, show_ascii=False)
+    line2 = hist[1].format_line(color=False, ascii=False)
     assert "WR 0x57" in line2
     assert "-> FF (1B)" in line2
 

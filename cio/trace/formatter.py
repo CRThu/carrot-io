@@ -1,6 +1,6 @@
 """
 Pluggable Trace Formatter Engine and Protocol Formatter Registry.
-Decouples domain-specific bus/protocol formatting and rendering from IoLogger core.
+Decouples domain-specific bus/protocol formatting and rendering from TraceController core.
 """
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from cio.trace.logger import LogEntry
+    from cio.trace.trace import TraceEntry
 
 
 @dataclass(frozen=True, slots=True)
 class FormatOptions:
-    """Immutable configuration container for log line formatting options."""
+    """Immutable configuration container for trace line formatting options."""
 
     color: bool = False
     max_bytes: int = 64
-    show_hex: bool = True
-    show_ascii: bool = True
-    show_time: bool = True
-    show_len: bool = True
+    hex: bool = True
+    ascii: bool = True
+    time: bool = True
+    len: bool = True
 
 
 FormatterFn = Callable[[Any, FormatOptions], str]
@@ -36,7 +36,7 @@ def paint(text: str, color_code: str, enabled: bool = True) -> str:
 
 
 def register_formatter(tag: str, formatter: FormatterFn) -> None:
-    """Register a specialized line formatter for a log tag."""
+    """Register a specialized line formatter for a trace tag."""
     _FORMATTERS[tag.upper()] = formatter
 
 
@@ -53,7 +53,7 @@ def get_formatter(tag: str) -> FormatterFn | None:
 def format_payload(data: bytes, opts: FormatOptions) -> str:
     """
     Format binary payload into orthogonal Hex, ASCII (with '.' for control chars), and length representation.
-    Fully honors independent control switches (show_hex, show_ascii, show_len).
+    Fully honors independent control switches (hex, ascii, len).
     """
     if not data:
         return ""
@@ -61,20 +61,20 @@ def format_payload(data: bytes, opts: FormatOptions) -> str:
     view = data[: opts.max_bytes]
 
     hex_str = ""
-    if opts.show_hex:
+    if opts.hex:
         h = " ".join(f"{b:02X}" for b in view)
         if truncated:
             h += f" ... ({len(data)} bytes total)"
         hex_str = paint(h, "97", opts.color)
 
     ascii_str = ""
-    if opts.show_ascii:
+    if opts.ascii:
         clean_str = "".join(chr(b) if 32 <= b <= 126 else "." for b in view)
         if truncated:
             clean_str += f" ... ({len(data)} bytes total)"
         ascii_str = f" | {clean_str}" if hex_str else clean_str
 
-    len_str = f" {paint(f'({len(data)}B)', '90', opts.color)}" if opts.show_len else ""
+    len_str = f" {paint(f'({len(data)}B)', '90', opts.color)}" if opts.len else ""
     body = f"{hex_str}{ascii_str}".strip()
     if body:
         return f"{body}{len_str}"
@@ -83,7 +83,7 @@ def format_payload(data: bytes, opts: FormatOptions) -> str:
 
 def format_raw_entry(entry: Any, opts: FormatOptions) -> str:
     """Format generic binary stream payload (Hex Dump + ASCII view + Truncation + Directional Arrows)."""
-    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.show_time else ""
+    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.time else ""
 
     is_out = entry.direction in ("OUT", "TX")
     arrow = "->" if is_out else "<-"
@@ -104,7 +104,7 @@ def format_entry(
     **kwargs: Any,
 ) -> str:
     """
-    Single authoritative entry point for log entry line formatting.
+    Single authoritative entry point for trace entry line formatting.
     Dispatches to registered protocol formatters or falls back to generic raw formatting.
     """
     opts = options if options is not None else FormatOptions(**kwargs)

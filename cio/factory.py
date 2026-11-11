@@ -73,16 +73,24 @@ def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
     except ImportError:
         pass
 
-    # Extract global trace and logging options
-    logger_opts: dict[str, Any] = {}
-    for opt in ("trace", "show_hex", "show_ascii", "show_time", "show_len", "max_bytes"):
+    # Extract global trace and display options
+    trace_opts: dict[str, Any] = {}
+    for opt in (
+        "trace",
+        "show.hex",
+        "show.ascii",
+        "show.time",
+        "show.len",
+        "show.color",
+        "max_bytes",
+    ):
         val = kwargs.pop(opt, None)
         if val is None and desc.bus and opt in desc.bus.kwargs:
             val = desc.bus.kwargs.pop(opt)
         if val is None and opt in desc.transport.kwargs:
             val = desc.transport.kwargs.pop(opt)
         if val is not None:
-            logger_opts[opt] = val
+            trace_opts[opt] = val
 
     if not desc.is_bridged:
         # 单层物理传输 (Single Tier)
@@ -152,18 +160,20 @@ def connect(locator: str, **kwargs: Any) -> AsyncBaseTransport | AsyncBaseBus:
             bridge_cls = registry.get_bridge_cls(bus_name, bridge_name)
             transport = bridge_cls(base_transport, **bus_kwargs)
 
-    # 统一挂载跟踪与日志配置 (基于 AsyncBaseTransport 核心契约)
-    if "trace" in logger_opts:
-        transport.trace = parse_bool(logger_opts["trace"])
-    if "show_hex" in logger_opts:
-        transport.logger.show_hex = parse_bool(logger_opts["show_hex"])
-    if "show_ascii" in logger_opts:
-        transport.logger.show_ascii = parse_bool(logger_opts["show_ascii"])
-    if "show_time" in logger_opts:
-        transport.logger.show_time = parse_bool(logger_opts["show_time"])
-    if "show_len" in logger_opts:
-        transport.logger.show_len = parse_bool(logger_opts["show_len"])
-    if "max_bytes" in logger_opts:
-        transport.logger.max_bytes = parse_int(logger_opts["max_bytes"], default=64)
+    # 统一挂载跟踪与展示配置 (基于 AsyncBaseTransport / AsyncBaseBus 核心契约)
+    if "trace" in trace_opts:
+        transport.trace = parse_bool(trace_opts["trace"])
+    if "show.hex" in trace_opts:
+        transport.trace.show.hex = parse_bool(trace_opts["show.hex"])
+    if "show.ascii" in trace_opts:
+        transport.trace.show.ascii = parse_bool(trace_opts["show.ascii"])
+    if "show.time" in trace_opts:
+        transport.trace.show.time = parse_bool(trace_opts["show.time"])
+    if "show.len" in trace_opts:
+        transport.trace.show.len = parse_bool(trace_opts["show.len"])
+    if "show.color" in trace_opts:
+        transport.trace.show.color = parse_bool(trace_opts["show.color"])
+    if "max_bytes" in trace_opts:
+        transport.trace.max_bytes = parse_int(trace_opts["max_bytes"], default=64)
 
     return transport

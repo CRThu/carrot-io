@@ -1,5 +1,5 @@
 """
-Trace Sub-Namespace: Frame packet tracing (logger) and multi-channel measurement telemetry (collector).
+Trace Sub-Namespace: Frame packet tracing and multi-channel measurement telemetry (collector).
 """
 from __future__ import annotations
 
@@ -13,11 +13,12 @@ from cio.trace.formatter import (
     register_formatter,
     unregister_formatter,
 )
-from cio.trace.logger import IoLogger, LogEntry
+from cio.trace.trace import ShowController, TraceController, TraceEntry
 
 __all__ = [
-    "IoLogger",
-    "LogEntry",
+    "TraceController",
+    "ShowController",
+    "TraceEntry",
     "Collector",
     "DataCollector",
     "DataPoint",

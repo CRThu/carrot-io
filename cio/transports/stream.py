@@ -84,7 +84,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
         raw_data = await self._read_impl(chunk_size)
         if raw_data:
             self.fifo.write(raw_data)
-            self.logger.log_in(raw_data)
+            self.trace.trace_in(raw_data)
         return raw_data
 
     async def write(self, data: BytesLike, timeout: float | None = None) -> int:
@@ -103,7 +103,7 @@ class AsyncStreamTransport(AsyncBaseTransport):
             else:
                 written = await self._write_impl(raw_data)
 
-            self.logger.log_out(raw_data[:written] if written else raw_data)
+            self.trace.trace_out(raw_data[:written] if written else raw_data)
             return written
 
     async def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:

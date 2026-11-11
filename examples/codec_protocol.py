@@ -26,7 +26,8 @@ async def main():
         # 发送业务载荷 (自动打包帧头、长度与 CRC16)
         await bin_proto.write(b"\x01\x03\x00\x00\x00\x02")
         print("最近发送的原始帧记录:")
-        print(bin_proto.dump_history(limit=1, show_ascii=False))
+        bin_proto.trace.show.ascii = False
+        print(bin_proto.dump_history(limit=1))
 
 
 if __name__ == "__main__":

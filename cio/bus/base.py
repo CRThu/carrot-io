@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from cio.transports.base import DEFAULT_TIMEOUT
-from cio.trace.logger import IoLogger, LogEntry
+from cio.trace.trace import ShowController, TraceController, TraceEntry
 
 
 class BusTransaction:
@@ -59,8 +59,8 @@ class BusTransaction:
             if exc_val is not None:
                 entry_meta["error"] = str(exc_val) or exc_val.__class__.__name__
 
-            self._bus.logger.record(
-                LogEntry(
+            self._bus.trace.record(
+                TraceEntry(
                     timestamp=time.time(),
                     direction=direction,
                     data=self.data,
@@ -82,14 +82,14 @@ class AsyncBaseBus(abc.ABC):
         **kwargs: Any,
     ) -> None:
         self.timeout = float(timeout) if timeout is not None else None
-        self.logger = IoLogger(trace=trace)
+        self._trace = TraceController(enabled=trace)
         self._is_open = False
         self._sync_wrapper: Any = None
         self._suppress_depth = 0
 
     @property
     def bus_tag(self) -> str:
-        """Tag used for trace logger entries."""
+        """Tag used for trace entries."""
         return "BUS"
 
     @property
@@ -126,12 +126,16 @@ class AsyncBaseBus(abc.ABC):
         return self._is_open
 
     @property
-    def trace(self) -> bool:
-        return self.logger.trace
+    def trace(self) -> TraceController:
+        """TraceController managing streaming trace and display switches."""
+        return self._trace
 
     @trace.setter
-    def trace(self, value: bool) -> None:
-        self.logger.trace = bool(value)
+    def trace(self, value: bool | TraceController) -> None:
+        if isinstance(value, TraceController):
+            self._trace = value
+        else:
+            self._trace.enabled = bool(value)
 
     @abc.abstractmethod
     async def open(self) -> None:
@@ -143,17 +147,17 @@ class AsyncBaseBus(abc.ABC):
         """Close bus and release hardware resources."""
         self._is_open = False
 
-    def history(self, limit: int = 100) -> list[LogEntry]:
-        """Get history log entries."""
-        return self.logger.history(limit=limit)
+    def history(self, limit: int = 100) -> list[TraceEntry]:
+        """Get history trace entries."""
+        return self._trace.history(limit=limit)
 
     def dump_history(self, **kwargs: Any) -> str:
         """Get formatted dump of recent bus log entries."""
-        return self.logger.dump(**kwargs)
+        return self._trace.dump(**kwargs)
 
     def clear_history(self) -> None:
-        """Clear in-memory log entries in logger."""
-        self.logger.clear()
+        """Clear in-memory log entries in trace controller."""
+        self._trace.clear()
 
     async def __aenter__(self) -> AsyncBaseBus:
         await self.open()

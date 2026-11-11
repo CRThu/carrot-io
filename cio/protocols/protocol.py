@@ -115,20 +115,12 @@ class ProtocolTransport:
     def dump_history(
         self,
         limit: int = 20,
-        color: bool = False,
-        show_hex: bool | None = None,
-        show_ascii: bool | None = None,
-        show_time: bool | None = None,
-        show_len: bool | None = None,
+        color: bool | None = None,
         max_bytes: int | None = None,
     ) -> str:
         return self.transport.dump_history(
             limit=limit,
             color=color,
-            show_hex=show_hex,
-            show_ascii=show_ascii,
-            show_time=show_time,
-            show_len=show_len,
             max_bytes=max_bytes,
         )
 

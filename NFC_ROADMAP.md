@@ -66,7 +66,7 @@ graph TD
         CardLayer --> Crypto["Crypto Layer (Crypto-1, AES-128)"]
     end
 
-    Bridge --> TraceBridge["Trace 适配器 (将 nfctester 结构化事件汇入 cio.IoLogger)"]
+    Bridge --> TraceBridge["Trace 适配器 (将 nfctester 结构化事件汇入 cio.TraceController)"]
 ```
 
 ### 依赖关系决策：
@@ -107,7 +107,7 @@ graph TD
 - **任务清单**：
   1. **Sink 回调桥接**：
      - `nfctester.trace.manager.add_sink(...)` 支持结构化 `TraceEvent` 回调；
-     - 在 `AsyncNfcBridge` 中挂载该 sink，当底层发生 TX/RX 时，将解析好的标签与摘要直接存入 `cio.Logger` 的历史队列；
+     - 在 `AsyncNfcBridge` 中挂载该 sink，当底层发生 TX/RX 时，将解析好的标签与摘要直接存入 `cio.TraceController` 的历史队列；
   2. **统一的 `dev.dump_history()`**：
      - 测试完成后调用 `dev.nfc.dump_history()`，即可统一打印包含 `[PROTOCOL]`、`[DRIVER]`、时间戳和位级标注的高亮通信全景图。
 

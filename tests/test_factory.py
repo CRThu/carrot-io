@@ -156,11 +156,12 @@ def test_top_level_factory_helpers():
 
 
 def test_gpio_bridge_factory_attributes():
-    """Verify that bridged locator returns an object with logger, trace, and lifecycle methods."""
-    pin = cio.connect("gpio:0,show_hex=true,trace=on @ serial:COM3")
-    assert hasattr(pin, "logger")
-    assert pin.logger.show_hex is True
-    assert pin.trace is True
+    """Verify that bridged locator returns an object with trace and lifecycle methods."""
+    pin = cio.connect("gpio:0,show.hex=true,trace=on @ serial:COM3")
+    assert hasattr(pin, "trace")
+    assert pin.trace.show.hex is True
+    assert pin.trace == True
+    assert pin.trace.enabled is True
     assert hasattr(pin, "open")
     assert hasattr(pin, "close")
     assert hasattr(pin, "is_open")
@@ -168,12 +169,13 @@ def test_gpio_bridge_factory_attributes():
 
 def test_factory_locator_boolean_options():
     """Verify that boolean false/0/off options in locator options are parsed accurately."""
-    dev = cio.connect("mock:dev,show_hex=false,show_time=0,show_ascii=off,trace=1,max_bytes=128")
-    assert dev.logger.show_hex is False
-    assert dev.logger.show_time is False
-    assert dev.logger.show_ascii is False
-    assert dev.trace is True
-    assert dev.logger.max_bytes == 128
+    dev = cio.connect("mock:dev,show.hex=false,show.time=0,show.ascii=off,trace=1,max_bytes=128")
+    assert dev.trace.show.hex is False
+    assert dev.trace.show.time is False
+    assert dev.trace.show.ascii is False
+    assert dev.trace == True
+    assert dev.trace.enabled is True
+    assert dev.trace.max_bytes == 128
 
 
 def test_factory_matmul_operator_overloading():

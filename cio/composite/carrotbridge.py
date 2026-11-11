@@ -131,7 +131,7 @@ class CarrotBridge(AsyncBaseTransport):
         actual_timeout = timeout if timeout is not None else self.timeout
 
         async with self._get_transaction_lock():
-            self.logger.log_out(cmd_bytes, tag="CMD")
+            self.trace.trace_out(cmd_bytes, tag="CMD")
             await self._underlying.write(cmd_bytes, timeout=actual_timeout)
 
             start_time = asyncio.get_running_loop().time()
@@ -159,15 +159,15 @@ class CarrotBridge(AsyncBaseTransport):
                     continue
 
                 if line_str.startswith("[RETURN]:"):
-                    self.logger.log_in(line, tag="RETURN")
+                    self.trace.trace_in(line, tag="RETURN")
                     raw_val = line_str[len("[RETURN]:"):].strip()
                     return self._parse_return_val(raw_val)
                 elif line_str.startswith("[ERROR]:"):
-                    self.logger.log_in(line, tag="ERROR")
+                    self.trace.trace_in(line, tag="ERROR")
                     err_msg = line_str[len("[ERROR]:"):].strip()
                     raise IOOperationError(f"CarrotBridge call '{func}' failed on device: {err_msg}")
                 else:
-                    self.logger.log_in(line, tag="MSG")
+                    self.trace.trace_in(line, tag="MSG")
 
 
 class AsyncI2cBridge(AsyncI2cBus):
@@ -274,7 +274,7 @@ class AsyncSpiBridge(AsyncSpiBus):
         else:
             self._borrowed = False if borrowed is None else borrowed
             self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
-        self.logger = self._bridge.logger
+        self.trace = self._bridge.trace
         self.bus = bus
         self.cs = cs
         self.cs_pin = cs_pin
@@ -379,7 +379,7 @@ class AsyncGpioBridge(AsyncGpioBus):
         else:
             self._borrowed = False if borrowed is None else borrowed
             self._bridge = CarrotBridge(transport, timeout=timeout, trace=trace, borrowed=self._borrowed, **kwargs)
-        self.logger = self._bridge.logger
+        self.trace = self._bridge.trace
         self.pin = pin
 
     @property
@@ -493,10 +493,10 @@ _CARROT_TEXT_PALETTES: dict[str, tuple[str, str, str]] = {
 
 def format_carrot_text(entry: Any, opts: FormatOptions) -> str:
     """Format CarrotBridge structured ASCII text frames (CMD, RETURN, MSG)."""
-    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.show_time else ""
+    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.time else ""
 
     is_printable_ascii = False
-    if opts.show_ascii:
+    if opts.ascii:
         try:
             decoded = entry.data.decode("utf-8")
             is_printable_ascii = bool(decoded) and all(
@@ -505,7 +505,7 @@ def format_carrot_text(entry: Any, opts: FormatOptions) -> str:
         except UnicodeDecodeError:
             is_printable_ascii = False
 
-    if is_printable_ascii and opts.show_ascii and not (opts.show_hex and not opts.show_ascii):
+    if is_printable_ascii and opts.ascii and not (opts.hex and not opts.ascii):
         clean_text = (
             entry.data.decode("utf-8", errors="replace")
             .strip()
@@ -524,7 +524,7 @@ def format_carrot_text(entry: Any, opts: FormatOptions) -> str:
         arrow_str = paint(arrow, arrow_c, opts.color)
         text_str = paint(clean_text, text_c, opts.color)
 
-        len_str = f" {paint(f'({len(entry.data)}B)', '90', opts.color)}" if opts.show_len and entry.data else ""
+        len_str = f" {paint(f'({len(entry.data)}B)', '90', opts.color)}" if opts.len and entry.data else ""
         return f"{time_part}{tag_str} {arrow_str} {text_str}{len_str}".strip()
 
     return format_raw_entry(entry, opts)

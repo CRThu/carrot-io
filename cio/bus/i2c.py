@@ -133,7 +133,7 @@ def format_i2c_entry(
     """
     opts = options if options is not None else FormatOptions(**kwargs)
 
-    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.show_time else ""
+    time_part = f"{paint(f'[{entry.time_str}]', '90', opts.color)} " if opts.time else ""
     tag_str = f"{paint('[I2C]', '36', opts.color)} "
 
     op = str(entry.meta.get("op", "RD" if entry.direction == "IN" else "WR"))

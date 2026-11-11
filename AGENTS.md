@@ -23,7 +23,7 @@
 - `cio/transports/`: 传输信道与缓冲（基类 `base.py`、异步流 `stream.py`、数据包 `packet.py`、串口抽象 `uart.py`、环形缓冲 `buffer.py`）
 - `cio/bus/`: 硬件总线与引脚抽象（`i2c.py` 总线契约、`spi.py` 总线契约、`gpio.py` 引脚控制器契约）
 - `cio/protocols/`: 应用层报文编解码与协议（通用编解码器 `codec.py`、高层协议包装 `protocol.py`）
-- `cio/trace/`: 硬件运行态追踪与遥测（通信帧与报文追踪 `logger.py`、多通道物理量时序采集 `collector.py`）
+- `cio/trace/`: 硬件运行态追踪与遥测（通信帧与报文追踪 `trace.py`、多通道物理量时序采集 `collector.py`）
 - `cio/composite/`: 硬件协议桥网关（下位机 ASCII 协议网关及其衍生总线适配器 `carrotbridge.py`、跨机代理 `rpc.py`）
 - `cio/backends/`: 物理驱动适配器延迟加载层（`serial`, `socket`, `ftdi`, `ch347`, `visa`）
 - `cio/testing/`: 硬件测试与断言验证子系统（`mock` 设备、`verify` 断言记分板）

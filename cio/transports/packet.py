@@ -87,7 +87,7 @@ class AsyncPacketTransport(AsyncBaseTransport):
             else:
                 written = await self._write_impl(raw_packet)
 
-            self.logger.log_out(raw_packet[:written] if written else raw_packet)
+            self.trace.trace_out(raw_packet[:written] if written else raw_packet)
             return written
 
     async def read(self, nbytes: int = -1, timeout: float | None = None) -> bytes:
@@ -111,7 +111,7 @@ class AsyncPacketTransport(AsyncBaseTransport):
             if nbytes > 0 and len(data) > nbytes:
                 data = data[:nbytes]
             if data:
-                self.logger.log_in(data)
+                self.trace.trace_in(data)
             return data
 
     async def query(self, cmd: BytesLike, delay: float = 0.0, timeout: float | None = None) -> bytes:

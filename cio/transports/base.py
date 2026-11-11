@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from cio.converters import BytesLike, ensure_bytes
 from cio.exceptions import ReadTimeoutError, UnsupportedCapabilityError, WriteTimeoutError
-from cio.trace.logger import IoLogger, LogEntry
+from cio.trace.trace import ShowController, TraceController, TraceEntry
 
 if TYPE_CHECKING:
     from cio.protocols.codec import BaseCodec
@@ -72,33 +72,25 @@ class SyncTransportWrapper:
         return self._async.is_open
 
     @property
-    def trace(self) -> bool:
+    def trace(self) -> TraceController:
         return self._async.trace
 
     @trace.setter
-    def trace(self, value: bool) -> None:
+    def trace(self, value: bool | TraceController) -> None:
         self._async.trace = value
 
-    def history(self, limit: int = 100) -> list[LogEntry]:
+    def history(self, limit: int = 100) -> list[TraceEntry]:
         return self._async.history(limit=limit)
 
     def dump_history(
         self,
         limit: int = 20,
-        color: bool = False,
-        show_hex: bool | None = None,
-        show_ascii: bool | None = None,
-        show_time: bool | None = None,
-        show_len: bool | None = None,
+        color: bool | None = None,
         max_bytes: int | None = None,
     ) -> str:
         return self._async.dump_history(
             limit=limit,
             color=color,
-            show_hex=show_hex,
-            show_ascii=show_ascii,
-            show_time=show_time,
-            show_len=show_len,
             max_bytes=max_bytes,
         )
 
@@ -147,7 +139,7 @@ DEFAULT_PACKET_QUEUE_SIZE: int = 1024  # 1024 帧默认离散报文队列深度�
 class AsyncBaseTransport(abc.ABC):
     """
     Abstract Base Class for all transport channels.
-    Provides lifecycle management, logging/tracing, and universal synchronous adaptation.
+    Provides lifecycle management, frame packet tracing, and universal synchronous adaptation.
     """
 
     def __init__(
@@ -155,20 +147,12 @@ class AsyncBaseTransport(abc.ABC):
         timeout: float | str | None = DEFAULT_TIMEOUT,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         trace: bool = False,
-        show_hex: bool = True,
-        show_ascii: bool = True,
-        show_time: bool = True,
-        show_len: bool = True,
         max_bytes: int = 64,
     ) -> None:
         self.timeout = float(timeout) if timeout is not None else None
         self.buffer_size = buffer_size
-        self.logger = IoLogger(
-            trace=trace,
-            show_hex=show_hex,
-            show_ascii=show_ascii,
-            show_time=show_time,
-            show_len=show_len,
+        self._trace = TraceController(
+            enabled=trace,
             max_bytes=max_bytes,
         )
 
@@ -192,12 +176,16 @@ class AsyncBaseTransport(abc.ABC):
         return self._is_open
 
     @property
-    def trace(self) -> bool:
-        return self.logger.trace
+    def trace(self) -> TraceController:
+        """TraceController managing streaming trace and display switches."""
+        return self._trace
 
     @trace.setter
-    def trace(self, value: bool) -> None:
-        self.logger.trace = bool(value)
+    def trace(self, value: bool | TraceController) -> None:
+        if isinstance(value, TraceController):
+            self._trace = value
+        else:
+            self._trace.enabled = bool(value)
 
     @abc.abstractmethod
     async def open(self) -> None:
@@ -209,34 +197,26 @@ class AsyncBaseTransport(abc.ABC):
         """Close connection and release resources."""
         self._is_open = False
 
-    def history(self, limit: int = 100) -> list[LogEntry]:
-        """Get history log entries."""
-        return self.logger.history(limit=limit)
+    def history(self, limit: int = 100) -> list[TraceEntry]:
+        """Get history trace entries."""
+        return self._trace.history(limit=limit)
 
     def dump_history(
         self,
         limit: int = 20,
-        color: bool = False,
-        show_hex: bool | None = None,
-        show_ascii: bool | None = None,
-        show_time: bool | None = None,
-        show_len: bool | None = None,
+        color: bool | None = None,
         max_bytes: int | None = None,
     ) -> str:
-        """Get formatted dump of recent TX/RX log entries."""
-        return self.logger.dump(
+        """Get formatted dump of recent TX/RX trace entries."""
+        return self._trace.dump(
             limit=limit,
             color=color,
-            show_hex=show_hex,
-            show_ascii=show_ascii,
-            show_time=show_time,
-            show_len=show_len,
             max_bytes=max_bytes,
         )
 
     def clear_history(self) -> None:
-        """Clear in-memory log entries in logger."""
-        self.logger.clear()
+        """Clear in-memory trace entries in trace controller."""
+        self._trace.clear()
 
     def bind(self, codec: BaseCodec) -> ProtocolTransport:
         """Bind a Codec to return a high-level ProtocolTransport."""

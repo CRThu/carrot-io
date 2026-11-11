@@ -1,5 +1,5 @@
 """
-Performance benchmarks for FifoBuffer, IoLogger, and SerialTransport hot paths.
+Performance benchmarks for FifoBuffer, TraceController, and SerialTransport hot paths.
 """
 import time
 from unittest.mock import MagicMock, patch
@@ -7,7 +7,7 @@ import pytest
 
 from cio.backends.serial import SerialTransport
 from cio.transports.buffer import FifoBuffer
-from cio.trace.logger import IoLogger
+from cio.trace.trace import TraceController
 
 
 def test_benchmark_fifobuffer_throughput():
@@ -27,19 +27,19 @@ def test_benchmark_fifobuffer_throughput():
     assert throughput > 10.0
 
 
-def test_benchmark_io_logger_hot_path():
-    logger = IoLogger()
+def test_benchmark_trace_controller_hot_path():
+    trace = TraceController()
     data = b"\x01\x02\x03\x04\x05\x06\x07\x08"
     start = time.perf_counter()
 
     iterations = 100000
     for _ in range(iterations):
-        logger.log_in(data)
-        logger.log_out(data)
+        trace.trace_in(data)
+        trace.trace_out(data)
 
     elapsed = time.perf_counter() - start
     ops_per_sec = (iterations * 2) / elapsed
-    print(f"\nIoLogger Rate: {ops_per_sec:.0f} ops/sec (Elapsed: {elapsed:.4f}s)")
+    print(f"\nTraceController Rate: {ops_per_sec:.0f} ops/sec (Elapsed: {elapsed:.4f}s)")
     assert ops_per_sec > 100000
 
 

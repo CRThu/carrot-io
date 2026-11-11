@@ -181,9 +181,9 @@ def test_parse_smart_defaults():
 
 
 def test_parse_data_conversions():
-    desc = parse_locator("mock:test,trace=on,show_hex=false,speed=0x400,timeout=1.25,name=custom")
+    desc = parse_locator("mock:test,trace=on,show.hex=false,speed=0x400,timeout=1.25,name=custom")
     assert desc.transport.kwargs["trace"] is True
-    assert desc.transport.kwargs["show_hex"] is False
+    assert desc.transport.kwargs["show.hex"] is False
     assert desc.transport.kwargs["speed"] == 1024
     assert desc.transport.kwargs["timeout"] == 1.25
     assert desc.transport.kwargs["name"] == "custom"

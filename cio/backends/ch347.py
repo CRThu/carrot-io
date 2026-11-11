@@ -580,7 +580,7 @@ class Ch347SpiBus(AsyncSpiBus):
         loop = asyncio.get_running_loop()
 
         async with self.device._get_lock():
-            self.logger.log_out(raw_tx, tag="SPI-TX")
+            self.trace.trace_out(raw_tx, tag="SPI-TX")
             ok = await loop.run_in_executor(
                 None,
                 self.device.dll.CH347SPI_WriteRead,
@@ -592,7 +592,7 @@ class Ch347SpiBus(AsyncSpiBus):
             if not ok:
                 raise IOOperationError(f"CH347 SPI transfer of {length} bytes failed")
             rx_data = bytes(io_buf)
-            self.logger.log_in(rx_data, tag="SPI-RX")
+            self.trace.trace_in(rx_data, tag="SPI-RX")
             return rx_data
 
 # --- GPIO 控制引脚实现 ---

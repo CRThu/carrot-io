@@ -259,33 +259,33 @@ asyncio.run(main())
 | `query()` | `dev.query(cmd: BytesLike, delay=0.0, timeout=None) -> bytes` | 发送命令、等待 `delay` 秒后回读响应 |
 | `capabilities` | `dev.capabilities -> frozenset[str]` | 显式能力契约声明（如 `{"stream", "uart"}` 或 `{"i2c", "spi", "gpio"}`） |
 | `flush()` | `dev.flush()` | 清空内部接收缓冲区 |
-| `history()` | `dev.history(limit=100) -> list[LogEntry]` | 获取内存中的历史收发日志条目 |
-| `dump_history()` | `dev.dump_history(limit=20, color=False, ...) -> str` | 获取格式化后的 TX/RX 通信 Hex 文本流 |
+| `history()` | `dev.history(limit=100) -> list[TraceEntry]` | 获取内存中的历史收发追溯条目 |
+| `dump_history()` | `dev.dump_history(limit=20, color=False) -> str` | 获取格式化后的 TX/RX 跟踪文本流 |
 | `bind()` | `dev.bind(codec: BaseCodec) -> ProtocolTransport` | 绑定编解码器生成强类型协议对象 |
 
-#### 通信日志格式化与展示配置 (`dev.logger`)
+#### 通信追踪格式化与展示配置 (`dev.trace.show`)
 
-`dev.logger` 提供了对控制台实时 Trace 与历史 Dump 格式的细粒度控制：
+`dev.trace` 提供了对控制台实时 Trace 与历史 Dump 格式的结构化控制器 `trace.show`：
 
 ```python
-# 1. 属性直读直写
-dev.logger.show_hex = False     # 隐藏十六进制原始字节流
-dev.logger.show_ascii = False   # 隐藏 ASCII 文本预览
-dev.logger.show_time = False    # 隐藏时间戳前缀 [HH:MM:SS.mmm]
-dev.logger.show_len = False     # 隐藏字节长度 (XX B)
-dev.logger.max_bytes = 32       # 限制单条最大展示字节数（超长自动截断）
+# 1. 结构化属性点选控制
+dev.trace.show.hex = False       # 隐藏十六进制原始字节流
+dev.trace.show.ascii = False     # 隐藏 ASCII 文本预览
+dev.trace.show.time = False      # 隐藏时间戳前缀 [HH:MM:SS.mmm]
+dev.trace.show.len = False       # 隐藏字节长度 (XX B)
+dev.trace.show.max_bytes = 32    # 限制单条最大展示字节数（超长自动截断）
 
-# 2. 批量设置
-dev.logger.configure(show_hex=False, show_len=False, max_bytes=16)
+# 2. 批量函数式链式调用
+dev.trace.show(ascii=False, len=False, max_bytes=16)
 
-# 3. 格式化日志输出效果（统一物理流向 -> / <-，I2C 语义自动对齐）
+# 3. 追踪输出效果（统一物理流向 -> / <-，I2C 语义自动精准对齐）
 # [12:00:00.000] [I2C] RD 0x57 @ 0xFFB0      <- 10 (1B)
 # [12:00:00.005] [I2C] WR 0x57 @ 0xFFE6      -> 55 (1B)
 # [12:00:00.010] [I2C] SCAN                  <- [0x57] (Found 1)
 # [12:00:00.015] [TX] -> 48 45 4C 4C 4F (5B) | HELLO
 
-# 4. 临时覆盖 dump 格式
-print(dev.dump_history(limit=10, show_hex=False, show_len=False))
+# 4. 获取历史转储
+print(dev.dump_history(limit=10))
 ```
 
 ---
