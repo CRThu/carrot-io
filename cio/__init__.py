@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import cio.backends  # Ensure backends register with global registry # noqa: F401
 import cio.composite  # Ensure default bridges register with global registry # noqa: F401
+import cio.devices  # Ensure devices package is available # noqa: F401
 
 from cio.transports.base import (
     DEFAULT_BUFFER_SIZE,
@@ -296,4 +297,5 @@ __all__ = [
     "check",
     "require",
     "verify",
+    "devices"
 ]

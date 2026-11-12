@@ -22,12 +22,14 @@
   - [4. SPI 全双工总线 (`AsyncSpiBus` / `AsyncSpiBridge`)](#4-spi-全双工总线-asyncspibus--asyncspibridge)
   - [5. GPIO 引脚控制 (`AsyncGpioBus` / `AsyncGpioBridge`)](#5-gpio-引脚控制-asyncgpiobus--asyncgpiobridge)
   - [6. UDP 与离散报文传输体系 (`UdpTransport` / `AsyncPacketTransport`)](#6-udp-与离散报文传输体系-udptransport--asyncpackettransport)
-- [四、硬件测试与断言框架 (`cio.testing.Verifier`)](#四硬件测试与断言框架-ciotestingverifier)
+  - [7. 工业仪器与 VISA 传输体系 (`VisaTransport`)](#7-工业仪器与-visa-传输体系-visatransport)
+- [四、硬件断言与验证子系统 (`check` / `require` / `verify`)](#四硬件断言与验证子系统-check--require--verify)
 - [五、消息编解码与高层协议 (`cio.protocols` / `dev.bind`)](#五消息编解码与高层协议-cioprotocols--devbind)
-- [六、远程 RPC 硬件代理网关 (`cio.composite.rpc`)](#六远程-rpc-硬件代理网关-ciocompositerpc)
-- [七、多通道时序数据收集器 (`cio.Collector`)](#七多通道时序数据收集器-ciocollector)
-- [八、数据类型与异常体系](#八数据类型与异常体系)
-- [九、即拷即用标准代码模板 (Recipes)](#九即拷即用标准代码模板-recipes)
+- [六、高层设备与工业仪器门面 (`cio.devices`)](#六高层设备与工业仪器门面-ciodevices)
+- [七、远程 RPC 硬件代理网关 (`cio.composite.rpc`)](#七远程-rpc-硬件代理网关-ciocompositerpc)
+- [八、多通道时序数据收集器 (`cio.Collector`)](#八多通道时序数据收集器-ciocollector)
+- [九、数据类型与异常体系](#九数据类型与异常体系)
+- [十、即拷即用标准代码模板 (Recipes)](#十即拷即用标准代码模板-recipes)
 
 ---
 
@@ -627,7 +629,72 @@ class CustomTLVCodec(BaseCodec):
 
 ---
 
-## 六、远程 RPC 硬件代理网关 (`cio.composite.rpc`)
+## 六、高层设备与工业仪器门面 (`cio.devices`)
+
+为提升业务脚本的开发体验，`carrot-io` 在基础流与总线传输之上提供了面向对象的厂商设备门面层：
+- **`BaseScpiDevice` / `BaseVisaDevice`**：工业仪器与 SCPI 设备基类，提供 IEEE 488.2 标准通用指令与自诊断方法；
+- **`keysight.B2985`**：Keysight B2980 系列高精度静电计 / 高阻计专属驱动。
+
+### 1. 接入与调用范式
+
+#### 方式 A：厂商命名空间直调（推荐，最自然直观）
+```python
+import cio
+from cio.devices import keysight
+
+# 传入底层打开的传输链路（VISA / TCP / Serial）
+with cio.visa("USB0::0x2A8D::0x9A01::MY61390950::INSTR") as inst:
+    with keysight.B2985(inst) as smu:
+        print("设备标识:", smu.idn())
+        print("微弱电流:", smu.measure_current(), "A")
+        print("高阻测量:", smu.measure_resistance(), "Ω")
+```
+
+#### 方式 B：单行定位器便捷调用（自管理底层生命周期）
+```python
+from cio.devices import keysight
+
+with keysight.B2985("visa:USB0::0x2A8D::0x9A01::MY61390950::INSTR") as smu:
+    smu.source_voltage(1.0, output=True, protection=True)
+    curr = smu.measure_current()
+```
+
+#### 方式 C：原生协程纯异步范式
+```python
+from cio.devices import keysight
+
+async with keysight.B2985("visa:USB0::0x2A8D::0x9A01::MY61390950::INSTR") as smu:
+    curr = await smu.measure_current()
+    errs = await smu.errors()
+```
+
+### 2. `keysight.B2985` 常用接口清单
+
+| 方法签名 | 说明 | 示例 |
+|---|---|---|
+| `measure_current() -> float` | 测量电流（A，自动清洗 9.91E37 溢出值为 NaN） | `curr = smu.measure_current()` |
+| `measure_voltage() -> float` | 测量电压（V） | `volt = smu.measure_voltage()` |
+| `measure_resistance() -> float` | 测量高阻阻值（Ω，支持至 10 PΩ） | `res = smu.measure_resistance()` |
+| `measure_charge() -> float` | 测量电荷量（C） | `char = smu.measure_charge()` |
+| `measure() -> float` | 单次触发并返回当前主测量单值 | `val = smu.measure()` |
+| `set_auto_range(enable=True, func="CURR")` | 配置自动量程开关 | `smu.set_auto_range(True)` |
+| `set_nplc(nplc=1.0, func="CURR")` | 设置积分时间滤波周期（0.001 ~ 100 PLC） | `smu.set_nplc(1.0)` |
+| `set_zero_correct(enable=True)` | 开启/关闭微弱电流零点校准 | `smu.set_zero_correct(True)` |
+| `source_voltage(volts, output=None, protection=None)` | 设置电压源电压（可一键配置 output 开关与 20MΩ 保护电阻） | `smu.source_voltage(1.0, output=True, protection=True)` |
+| `get_source_voltage() -> float` | 查询当前电压源设定值 | `v_set = smu.get_source_voltage()` |
+| `set_output(enable: bool)` | 开启或关闭电压源输出开关 | `smu.set_output(True)` |
+| `get_output() -> bool` | 查询当前输出开关状态 | `if smu.get_output(): ...` |
+| `set_protection(enable=True)` | 开启/关闭 20 MΩ 串联安全保护电阻 (RLIM) | `smu.set_protection(True)` |
+| `get_protection() -> bool` | 查询 20 MΩ 限流保护电阻开关状态 | `is_prot = smu.get_protection()` |
+| `idn() -> str` | 查询仪器识别标识符 (`*IDN?`) | `print(smu.idn())` |
+| `reset()` | 复位仪器出厂设定 (`*RST`) | `smu.reset()` |
+| `clear()` | 清空缓冲区与复位状态 | `smu.clear()` |
+| `errors() -> list[str]` | 读取并清空系统错误队列 (`:SYST:ERR?`) | `assert smu.errors() == []` |
+
+
+---
+
+## 七、远程 RPC 硬件代理网关 (`cio.composite.rpc`)
 
 跨机器/跨操作系统硬件代理，在目标机启动守护进程，本地透明调用：
 
@@ -657,7 +724,7 @@ with cio.connect(url) as dev:
 
 ---
 
-## 七、多通道时序数据收集器 (`cio.Collector`)
+## 八、多通道时序数据收集器 (`cio.Collector`)
 
 `cio.Collector`（类名 `DataCollector`）是专为芯片产测、电压/电流/温度巡检、示波器波形捕获设计的极简时序数据收集器。
 
@@ -739,10 +806,10 @@ with cio.Collector("experiment.csv") as col:
 
 ---
 
-## 八、数据类型与异常体系
+## 九、数据类型与异常体系
 
 ### 1. 数据类型归一化 (`BytesLike`)
-所有写入入参均声明为 `BytesLike = bytes | bytearray | int | list[int] | tuple[int, ...]，内部通过 `cio.ensure_bytes()` 统一归一化：
+所有写入入参均声明为 `BytesLike = bytes | bytearray | int | list[int] | tuple[int, ...]`，内部通过 `cio.ensure_bytes()` 统一归一化：
 - `dev.write(b"\x01\x02")`
 - `dev.write([0x01, 0x02, 0x03])`
 - `dev.write((0x01, 0x02))`
@@ -770,7 +837,7 @@ TransportError (基类)
 
 ---
 
-## 九、即拷即用标准代码模板 (Recipes)
+## 十、即拷即用标准代码模板 (Recipes)
 
 ### 模板 1：I2C 芯片寄存器自动化验证 (同步 check / verify 范式)
 ```python

@@ -23,11 +23,16 @@ class SyncTransportWrapper:
     Universal synchronous wrapper allowing non-async usage of any async target.
     """
 
-    def __init__(self, async_target: Any) -> None:
+    def __init__(
+        self,
+        async_target: Any,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ) -> None:
         self._async = async_target
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._loop: asyncio.AbstractEventLoop | None = loop
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._owns_loop = loop is None
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:
         with self._lock:
@@ -35,6 +40,7 @@ class SyncTransportWrapper:
                 self._loop = asyncio.new_event_loop()
                 self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
                 self._thread.start()
+                self._owns_loop = True
             return self._loop
 
     def _run_sync(self, coro: Any) -> Any:
@@ -50,7 +56,7 @@ class SyncTransportWrapper:
             if self._async.is_open:
                 self._run_sync(self._async.close())
         finally:
-            if self._loop and self._loop.is_running():
+            if self._owns_loop and self._loop and self._loop.is_running():
                 self._loop.call_soon_threadsafe(self._loop.stop)
                 if self._thread:
                     self._thread.join(timeout=1.0)

@@ -29,7 +29,7 @@ class MockTransport(AsyncStreamTransport):
         self.address = address
         self.tx_history: list[bytes] = []
         self._rx_raw = bytearray()
-        self.auto_replies: dict[bytes, bytes] = {}
+        self.auto_replies: dict[bytes, Any] = {}
 
     async def open(self) -> None:
         self._is_open = True
@@ -49,7 +49,15 @@ class MockTransport(AsyncStreamTransport):
         self.tx_history.append(data)
         for pattern, reply in self.auto_replies.items():
             if pattern in data:
-                self.push_rx(reply)
+                if callable(reply):
+                    rep = reply(data)
+                    if rep:
+                        self.push_rx(rep)
+                elif isinstance(reply, list):
+                    if reply:
+                        self.push_rx(reply.pop(0))
+                else:
+                    self.push_rx(reply)
                 break
         return len(data)
 
