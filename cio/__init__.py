@@ -206,7 +206,7 @@ def visa(
     )
 
 
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 __all__ = [
     # Singleton & Env Injection
